@@ -1,0 +1,49 @@
+# --- Root .gitignore for PR Review Agent ---
+
+# --- Frontend (Node.js/Vite/Tauri) ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/.vscode/*
+!frontend/.vscode/extensions.json
+frontend/scripts
+
+# --- Backend (Python/PyInstaller/Poetry) ---
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.Python
+backend/build/
+backend/dist/
+backend/.venv
+backend/venv/
+backend/env/
+backend/ENV/
+backend/poetry.lock
+backend/*.db
+backend/*.sqlite
+backend/.env
+backend/tiktoken_cache/
+
+# --- Sidecar Binaries (Tauri) ---
+frontend/src-tauri/PR-Review-Agent-x86_64-pc-windows-msvc.exe
+frontend/src-tauri/desktop_launcher-x86_64-pc-windows-msvc.exe
+
+# --- General ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.env
+
+# --- Temporary Assets ---
+backend/app_icon_square.png
