@@ -22,37 +22,50 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
-            // Spawn the Python backend
-            tauri::async_runtime::spawn(async move {
-                let sidecar_command = handle
-                    .shell()
-                    .sidecar("PR-Review-Agent")
-                    .expect("failed to setup sidecar")
-                    .args(["--sidecar"]);
+            // Spawn the Python backend (skip if TAURI_NO_SIDECAR is set)
+            if std::env::var("TAURI_NO_SIDECAR").is_ok() {
+                println!("TAURI_NO_SIDECAR is set — skipping sidecar, expecting manual backend on port 47685");
+            } else {
+                tauri::async_runtime::spawn(async move {
+                    let sidecar_result = handle
+                        .shell()
+                        .sidecar("PR-Review-Agent")
+                        .map(|cmd| cmd.args(["--sidecar"]));
 
-                let (mut rx, mut _child) = sidecar_command
-                    .spawn()
-                    .expect("failed to spawn sidecar");
-
-                use tauri_plugin_shell::process::CommandEvent;
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(line) => {
-                            println!("Backend: {}", String::from_utf8_lossy(&line));
+                    match sidecar_result {
+                        Ok(sidecar_command) => {
+                            match sidecar_command.spawn() {
+                                Ok((mut rx, mut _child)) => {
+                                    use tauri_plugin_shell::process::CommandEvent;
+                                    while let Some(event) = rx.recv().await {
+                                        match event {
+                                            CommandEvent::Stdout(line) => {
+                                                println!("Backend: {}", String::from_utf8_lossy(&line));
+                                            }
+                                            CommandEvent::Stderr(line) => {
+                                                eprintln!("Backend Error: {}", String::from_utf8_lossy(&line));
+                                            }
+                                            CommandEvent::Error(err) => {
+                                                eprintln!("Backend Process Error: {}", err);
+                                            }
+                                            CommandEvent::Terminated(payload) => {
+                                                eprintln!("Backend Terminated: {:?}", payload);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Sidecar not spawned (manual backend mode): {}", e);
+                                }
+                            }
                         }
-                        CommandEvent::Stderr(line) => {
-                            eprintln!("Backend Error: {}", String::from_utf8_lossy(&line));
+                        Err(e) => {
+                            eprintln!("Sidecar binary not found (manual backend mode): {}", e);
                         }
-                        CommandEvent::Error(err) => {
-                            eprintln!("Backend Process Error: {}", err);
-                        }
-                        CommandEvent::Terminated(payload) => {
-                            eprintln!("Backend Terminated: {:?}", payload);
-                        }
-                        _ => {}
                     }
-                }
-            });
+                });
+            }
 
             let open_item = MenuItem::with_id(app, "open", "Open App", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

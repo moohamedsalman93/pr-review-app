@@ -63,7 +63,24 @@ This runs the React frontend with hot-reloading and automatically manages the Py
 - **Command**: `npm run tauri` (inside `frontend/`)
 - **Best for**: Standard daily usage and development.
 
-### 2. Standalone Production App
+### 2. Development Mode (No Sidecar)
+
+Run the Tauri app while managing the backend yourself — useful for backend hot-reloading with `--reload`.
+
+1. Start the backend manually:
+   ```bash
+   cd backend
+   poetry run uvicorn app.main:app --reload --port 47685
+   ```
+2. In a separate terminal, launch the Tauri app:
+   ```bash
+   cd frontend
+   npm run tauri:nosidecar
+   ```
+
+The app will detect the missing sidecar and log a warning, then connect to your manually-started backend on port `47685`.
+
+### 3. Standalone Production App
 
 Once built, the application runs as a native Windows executable.
 
@@ -71,7 +88,7 @@ Once built, the application runs as a native Windows executable.
 - **Sidecar**: The Python backend is bundled inside and starts automatically.
 - **Best for**: Regular usage without needing a terminal.
 
-### 3. Debugging Backend Only
+### 4. Debugging Backend Only
 
 You can run the FastAPI server standalone to test API endpoints or Qodo integration logic directly.
 

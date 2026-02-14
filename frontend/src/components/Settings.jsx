@@ -2,6 +2,54 @@ import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Save, Loader2, CheckCircle, AlertCircle, Shield, Github, GitBranch, Cpu } from 'lucide-react';
 import { settingsService } from '../services/api';
 
+const SectionHeader = ({ icon: Icon, title, description }) => (
+    <div className="mb-5">
+        <div className="flex items-center gap-2 mb-1">
+            <Icon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+            <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">{title}</h4>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p>
+    </div>
+);
+
+const InputField = ({ label, id, type = "text", value, onChange, placeholder, helpText, min, max }) => (
+    <div className="space-y-1.5">
+        <label htmlFor={id} className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            {label}
+        </label>
+        <input
+            type={type}
+            id={id}
+            value={value}
+            onChange={onChange}
+            min={min}
+            max={max}
+            className="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-primary-50 dark:focus:ring-primary-900/10 focus:border-primary-500 transition-all"
+            placeholder={placeholder}
+        />
+        {helpText && <p className="text-[10px] text-slate-400 font-medium">{helpText}</p>}
+    </div>
+);
+
+const SelectField = ({ label, id, value, onChange, options, helpText }) => (
+    <div className="space-y-1.5">
+        <label htmlFor={id} className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            {label}
+        </label>
+        <select
+            id={id}
+            value={value}
+            onChange={onChange}
+            className="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-4 focus:ring-primary-50 dark:focus:ring-primary-900/10 focus:border-primary-500 transition-all appearance-none"
+        >
+            {options.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+        </select>
+        {helpText && <p className="text-[10px] text-slate-400 font-medium">{helpText}</p>}
+    </div>
+);
+
 const Settings = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -66,54 +114,6 @@ const Settings = () => {
             </div>
         );
     }
-
-    const SectionHeader = ({ icon: Icon, title, description }) => (
-        <div className="mb-5">
-            <div className="flex items-center gap-2 mb-1">
-                <Icon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">{title}</h4>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p>
-        </div>
-    );
-
-    const InputField = ({ label, id, type = "text", value, onChange, placeholder, helpText, min, max }) => (
-        <div className="space-y-1.5">
-            <label htmlFor={id} className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                {label}
-            </label>
-            <input
-                type={type}
-                id={id}
-                value={value}
-                onChange={onChange}
-                min={min}
-                max={max}
-                className="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-primary-50 dark:focus:ring-primary-900/10 focus:border-primary-500 transition-all"
-                placeholder={placeholder}
-            />
-            {helpText && <p className="text-[10px] text-slate-400 font-medium">{helpText}</p>}
-        </div>
-    );
-
-    const SelectField = ({ label, id, value, onChange, options, helpText }) => (
-        <div className="space-y-1.5">
-            <label htmlFor={id} className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                {label}
-            </label>
-            <select
-                id={id}
-                value={value}
-                onChange={onChange}
-                className="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-4 focus:ring-primary-50 dark:focus:ring-primary-900/10 focus:border-primary-500 transition-all appearance-none"
-            >
-                {options.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-            </select>
-            {helpText && <p className="text-[10px] text-slate-400 font-medium">{helpText}</p>}
-        </div>
-    );
 
     return (
         <div className="max-w-4xl mx-auto animate-fade-in">

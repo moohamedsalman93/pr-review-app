@@ -5,6 +5,7 @@ import SuggestionCard from './SuggestionCard';
 import DiffView from './DiffView';
 import PRDescriptionViewer from './PRDescriptionViewer';
 import ChatDrawer from './ChatDrawer';
+import { exportPRToHTML } from '../utils/exportUtils';
 import {
     ArrowLeft,
     GitMerge,
@@ -29,7 +30,8 @@ import {
     Layout as LayoutIcon,
     ChevronDown,
     ChevronUp,
-    MessageSquare
+    MessageSquare,
+    Download
 } from 'lucide-react';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
@@ -331,6 +333,14 @@ const PRDetail = () => {
 
                                         {review.status === 'completed' && (
                                             <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => exportPRToHTML(review)}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold transition-all shadow-sm"
+                                                    title="Export PR details to HTML"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    Export
+                                                </button>
                                                 <button
                                                     onClick={() => setIsChatOpen(true)}
                                                     className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold transition-all shadow-sm"

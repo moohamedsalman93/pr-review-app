@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "build:backend": "cd ../backend && python build_sidecar.py",
     "tauri": "npm run build:backend && tauri dev",
+    "tauri:nosidecar": "set TAURI_NO_SIDECAR=1&& tauri dev",
     "tauri:build": "npm run build && npm run build:backend && tauri build",
     "release": "node scripts/build-and-release.js"
   },
