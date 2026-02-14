@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { openExternalLink } from '../utils/link';
+import { check } from '@tauri-apps/plugin-updater';
 import {
 
     GitPullRequest,
@@ -17,7 +18,8 @@ import {
     X,
     Minus,
     Square,
-    BookOpen
+    BookOpen,
+    Download
 } from 'lucide-react';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 
@@ -98,7 +100,25 @@ const Layout = ({ children }) => {
         const saved = localStorage.getItem('theme');
         return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
     });
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+    const [newVersion, setNewVersion] = useState(null);
     const location = useLocation();
+
+    useEffect(() => {
+        const checkUpdate = async () => {
+            try {
+                const update = await check();
+                if (update?.available) {
+                    setUpdateAvailable(true);
+                    setNewVersion(update.version);
+                }
+            } catch (error) {
+                console.error('Failed to check for updates:', error);
+            }
+        };
+
+        checkUpdate();
+    }, []);
 
     useEffect(() => {
         if (isDarkMode) {
@@ -113,7 +133,7 @@ const Layout = ({ children }) => {
     const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
     return (
-        <div className="flex w-screen h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl m-[1px]">
+        <div className="flex w-screen h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl m-px">
             {/* Sidebar */}
             <aside
                 className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out ${collapsed ? 'w-14' : 'w-56'
@@ -190,29 +210,20 @@ const Layout = ({ children }) => {
                 className={`w-full max-w-full transition-all duration-300 ${collapsed ? 'pl-14' : 'pl-56'
                     }`}
             >
-                {/* Header / Titlebar */}
                 <header
                     data-tauri-drag-region
                     className="sticky top-0 z-40 flex items-center justify-between h-8 px-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800"
                 >
                     <div className="flex items-center gap-3 px-6 pointer-events-none">
                         <h2 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            {location.pathname === '/' ? 'Dashboard' :
+                            {location.pathname === '/' ? 'New Review' :
                                 location.pathname.startsWith('/review') ? 'Review Details' :
                                     location.pathname === '/history' ? 'History' :
                                         location.pathname === '/rules' ? 'Rules' : 'Settings'}
                         </h2>
                     </div>
 
-                    <WindowControls />
-                </header>
-
-                {/* Sub-header for app actions */}
-                <div className="flex items-center justify-between h-10 px-6 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    <div className="flex items-center gap-3">
-                        {/* Any page specific actions can go here */}
-                    </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center h-full ml-auto no-drag gap-3"> {/* Container for chip and window controls */}
                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-medium text-slate-600 dark:text-slate-300">
                             <Cpu className="w-2.5 h-2.5" />
                             <span>Ollama Powered</span>
@@ -227,14 +238,22 @@ const Layout = ({ children }) => {
                         >
                             <Github className="w-3.5 h-3.5" />
                         </a>
+                        {updateAvailable && (
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 mx-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-[9px] font-medium border border-amber-200 dark:border-amber-800 animate-in fade-in zoom-in duration-300">
+                                <Download className="w-3 h-3" />
+                                <span>Update Available {newVersion && `(${newVersion})`}</span>
+                            </div>
+                        )}
+                        <div className='h-[60%] w-[1px] bg-slate-200 dark:bg-slate-700'></div>
+                        <WindowControls />
                     </div>
-                </div>
+                </header>
 
-                <div className={`h-[calc(100vh-4.5rem)] ${location.pathname.startsWith('/review') ? 'overflow-hidden p-0' : 'overflow-y-auto p-6 max-w-7xl mx-auto scrollbar-none'}`}>
+                <div className={`h-[calc(100vh-2rem)] ${location.pathname.startsWith('/review') ? 'overflow-hidden p-0' : 'overflow-y-auto p-6 max-w-7xl mx-auto scrollbar-none'}`}>
                     {children}
                 </div>
-            </main>
-        </div>
+            </main >
+        </div >
     );
 };
 
