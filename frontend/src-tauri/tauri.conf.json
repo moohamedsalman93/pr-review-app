@@ -26,7 +26,7 @@
       "csp": null
     }
   },
-    "bundle": {
+  "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
@@ -36,8 +36,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "PR-Review-Agent"
-    ]
+    "externalBin": ["PR-Review-Agent"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "__UPDATE_ENDPOINT_ENV__"
+      ],
+      "pubkey": "__SIGNING_PUBKEY_ENV__"
+    }
   }
 }

@@ -15,10 +15,18 @@ npx tauri signer generate -w keys/private.key
 
 ## Configuration
 
-1. **tauri.conf.json**: Copy the Public Key into the `plugins.updater.pubkey` field in `src-tauri/tauri.conf.json`.
-2. **Environment**: When running the build script, ensure you have set the password if you used one during key generation:
-   - `$env:TAURI_KEY_PASSWORD="your-password"` (PowerShell)
+Instead of committing your public key to `tauri.conf.json`, you can provide it via an environment variable.
+
+1. **tauri.conf.json**: The `pubkey` is set to `__SIGNING_PUBKEY_ENV__`.
+2. **Environment**: Add your keys and endpoint to the `.env` file in the `frontend` directory:
+   - `TAURI_SIGNING_PUBLIC_KEY="your-public-key-string"`
+   - `TAURI_UPDATE_ENDPOINT="https://github.com/.../latest.json"` (Optional, defaults to main repo)
+   - `TAURI_KEY_PASSWORD="your-password"` (if applicable)
 
 ## Build & Release
 
-The `scripts/build-and-release.js` script will automatically look for `keys/private.key`. If found, it will enable signing during the build process and generate the required `.sig` files for OTA updates.
+The `scripts/build-and-release.js` script will:
+
+1. Load variables from your `.env` file.
+2. Look for `keys/private.key` for signing.
+3. Automatically inject the `TAURI_SIGNING_PUBLIC_KEY` and `TAURI_UPDATE_ENDPOINT` into `tauri.conf.json` during the build and revert it afterwards.
