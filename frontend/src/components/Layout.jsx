@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { openExternalLink } from '../utils/link';
 import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import {
 
     GitPullRequest,
@@ -102,7 +103,27 @@ const Layout = ({ children }) => {
     });
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [newVersion, setNewVersion] = useState(null);
+    const [pendingUpdate, setPendingUpdate] = useState(null);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [updateProgress, setUpdateProgress] = useState(null); // 0-100 or null
+    const [updateError, setUpdateError] = useState(null);
+    const [backendReady, setBackendReady] = useState(false);
     const location = useLocation();
+
+    useEffect(() => {
+        const BACKEND_URL = 'http://localhost:47685';
+        let cancelled = false;
+        const check = async () => {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/health`, { method: 'GET', signal: AbortSignal.timeout(2000) });
+                if (res.ok && !cancelled) setBackendReady(true);
+            } catch {
+                if (!cancelled) setTimeout(check, 800);
+            }
+        };
+        check();
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         const checkUpdate = async () => {
@@ -110,15 +131,12 @@ const Layout = ({ children }) => {
                 console.log('Checking for updates...');
                 const update = await check();
                 if (update) {
-                    if (update.available) {
-                        console.log(`Update available: ${update.version} (current: 2.0.1)`);
-                        setUpdateAvailable(true);
-                        setNewVersion(update.version);
-                    } else {
-                        console.log('No updates available (app is up to date).');
-                    }
+                    console.log(`Update available: ${update.version}`);
+                    setUpdateAvailable(true);
+                    setNewVersion(update.version);
+                    setPendingUpdate(update);
                 } else {
-                    console.log('Update check returned no result (updater plugin might not be fully initialized).');
+                    console.log('No updates available (app is up to date).');
                 }
             } catch (error) {
                 console.error('Failed to check for updates:', error);
@@ -131,6 +149,35 @@ const Layout = ({ children }) => {
         checkUpdate();
     }, []);
 
+    const startUpdate = async () => {
+        if (!pendingUpdate || isUpdating) return;
+        setIsUpdating(true);
+        setUpdateError(null);
+        setUpdateProgress(0);
+        let downloadedBytes = 0;
+        let contentLength = null;
+        try {
+            await pendingUpdate.downloadAndInstall((event) => {
+                if (event.event === 'Started' && event.data?.contentLength != null) {
+                    contentLength = event.data.contentLength;
+                } else if (event.event === 'Progress' && event.data?.chunkLength != null) {
+                    downloadedBytes += event.data.chunkLength;
+                    const pct = contentLength != null && contentLength > 0
+                        ? Math.min(100, Math.round((downloadedBytes / contentLength) * 100))
+                        : null;
+                    setUpdateProgress(pct);
+                } else if (event.event === 'Finished') {
+                    setUpdateProgress(100);
+                }
+            });
+            await relaunch();
+        } catch (err) {
+            setUpdateError(err?.message || String(err));
+            setIsUpdating(false);
+            setUpdateProgress(null);
+        }
+    };
+
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark');
@@ -142,6 +189,17 @@ const Layout = ({ children }) => {
     }, [isDarkMode]);
 
     const toggleTheme = () => setIsDarkMode(!isDarkMode);
+
+    if (!backendReady) {
+        return (
+            <div className="flex w-screen h-screen bg-slate-50 dark:bg-slate-950 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-10 h-10 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Starting backend…</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex w-screen h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl m-px">
@@ -250,9 +308,30 @@ const Layout = ({ children }) => {
                             <Github className="w-3.5 h-3.5" />
                         </a>
                         {updateAvailable && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 mx-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-[9px] font-medium border border-amber-200 dark:border-amber-800 animate-in fade-in zoom-in duration-300">
-                                <Download className="w-3 h-3" />
-                                <span>Update Available {newVersion && `(${newVersion})`}</span>
+                            <div className="flex flex-col items-end gap-0.5 mx-2">
+                                {updateError && (
+                                    <span className="text-[9px] text-red-600 dark:text-red-400">{updateError}</span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={startUpdate}
+                                    disabled={isUpdating}
+                                    className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-[9px] font-medium border border-amber-200 dark:border-amber-800 animate-in fade-in zoom-in duration-300 hover:bg-amber-200 dark:hover:bg-amber-800/50 disabled:opacity-80 disabled:cursor-wait transition-colors min-w-[120px] justify-center"
+                                >
+                                    {isUpdating ? (
+                                        <>
+                                            <div className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin" />
+                                            <span>
+                                                {updateProgress != null ? `Downloading ${updateProgress}%` : 'Downloading…'}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="w-3 h-3 shrink-0" />
+                                            <span>Update Available {newVersion && `(${newVersion})`}</span>
+                                        </>
+                                    )}
+                                </button>
                             </div>
                         )}
                         <div className='h-[60%] w-[1px] bg-slate-200 dark:bg-slate-700'></div>

@@ -22,7 +22,8 @@
     "dialog:default",
     "fs:default",
     "fs:allow-write-text-file",
-    "updater:allow-check",
-    "updater:allow-install"
-  ]
+"updater:allow-check",
+    "updater:allow-download-and-install",
+    "process:allow-restart"
+]
 }

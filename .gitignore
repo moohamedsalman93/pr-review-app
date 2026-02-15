@@ -10,7 +10,10 @@ frontend/yarn-debug.log*
 frontend/.vscode/*
 !frontend/.vscode/extensions.json
 frontend/scripts
-frontend/keys
+frontend/keys/
+frontend/gen_keys.js
+frontend/keys_raw.txt
+frontend/keys_output.txt
 
 # --- Backend (Python/PyInstaller/Poetry) ---
 backend/__pycache__/
