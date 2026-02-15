@@ -107,13 +107,24 @@ const Layout = ({ children }) => {
     useEffect(() => {
         const checkUpdate = async () => {
             try {
+                console.log('Checking for updates...');
                 const update = await check();
-                if (update?.available) {
-                    setUpdateAvailable(true);
-                    setNewVersion(update.version);
+                if (update) {
+                    if (update.available) {
+                        console.log(`Update available: ${update.version} (current: 2.0.1)`);
+                        setUpdateAvailable(true);
+                        setNewVersion(update.version);
+                    } else {
+                        console.log('No updates available (app is up to date).');
+                    }
+                } else {
+                    console.log('Update check returned no result (updater plugin might not be fully initialized).');
                 }
             } catch (error) {
                 console.error('Failed to check for updates:', error);
+                if (error.toString().includes('404')) {
+                    console.warn('The update endpoint returned a 404. Ensure a release has been published with a latest.json file.');
+                }
             }
         };
 
