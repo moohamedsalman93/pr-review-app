@@ -44,8 +44,9 @@ export const reviewService = {
     },
     
     // Chat with PR
-    chatWithPR: async (id, question) => {
-        const response = await api.post(`/reviews/ask`, { question, review_id: id });
+    chatWithPR: async (id, question, signal = null) => {
+        const config = signal ? { signal } : {};
+        const response = await api.post(`/reviews/ask`, { question, review_id: id }, config);
         return response.data;
     }
 };

@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { openExternalLink } from '../utils/link';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import {
-
     GitPullRequest,
     History,
     Settings as SettingsIcon,
@@ -20,13 +19,25 @@ import {
     Minus,
     Square,
     BookOpen,
-    Download
+    Download,
+    CheckCircle2,
+    Circle,
+    Loader2
 } from 'lucide-react';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
+import { confirm } from '@tauri-apps/plugin-dialog';
 
 const appWindow = getCurrentWindow();
 
-const WindowControls = () => {
+// Context for sidebar control
+const SidebarContext = createContext(null);
+
+export const useSidebar = () => {
+    const context = useContext(SidebarContext);
+    return context;
+};
+
+const WindowControls = ({ showCloseConfirmation = false }) => {
     const [isMaximized, setIsMaximized] = useState(false);
 
     useEffect(() => {
@@ -43,6 +54,19 @@ const WindowControls = () => {
             unlisten.then(f => f());
         };
     }, []);
+
+    const handleClose = async () => {
+        if (showCloseConfirmation) {
+            const confirmed = await confirm('Are you sure you want to close the application?', {
+                title: 'Close Application',
+                kind: 'warning',
+                okLabel: 'Close',
+                cancelLabel: 'Cancel'
+            });
+            if (!confirmed) return;
+        }
+        await appWindow.close();
+    };
 
     return (
         <div className="flex items-center h-full no-drag">
@@ -67,7 +91,7 @@ const WindowControls = () => {
                 <Square className="w-3 h-3" />
             </button>
             <button
-                onClick={() => appWindow.close()}
+                onClick={handleClose}
                 className="flex items-center justify-center w-12 h-full hover:bg-red-500 hover:text-white transition-colors"
                 title="Close"
             >
@@ -97,6 +121,14 @@ const NavItem = ({ to, icon: Icon, label, collapsed, active }) => (
 
 const Layout = ({ children }) => {
     const [collapsed, setCollapsed] = useState(false);
+    
+    const toggleSidebar = (forceState = null) => {
+        if (forceState !== null) {
+            setCollapsed(forceState);
+        } else {
+            setCollapsed(prev => !prev);
+        }
+    };
     const [isDarkMode, setIsDarkMode] = useState(() => {
         const saved = localStorage.getItem('theme');
         return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -108,6 +140,7 @@ const Layout = ({ children }) => {
     const [updateProgress, setUpdateProgress] = useState(null); // 0-100 or null
     const [updateError, setUpdateError] = useState(null);
     const [backendReady, setBackendReady] = useState(false);
+    const [initStep, setInitStep] = useState(0);
     const location = useLocation();
 
     useEffect(() => {
@@ -116,7 +149,10 @@ const Layout = ({ children }) => {
         const check = async () => {
             try {
                 const res = await fetch(`${BACKEND_URL}/api/health`, { method: 'GET', signal: AbortSignal.timeout(2000) });
-                if (res.ok && !cancelled) setBackendReady(true);
+                if (res.ok && !cancelled) {
+                    setBackendReady(true);
+                    setInitStep(4);
+                }
             } catch {
                 if (!cancelled) setTimeout(check, 800);
             }
@@ -124,6 +160,17 @@ const Layout = ({ children }) => {
         check();
         return () => { cancelled = true; };
     }, []);
+
+    useEffect(() => {
+        if (backendReady) return;
+
+        const stepsBeforeReady = 4; // indices 0–3, 4 is Ready
+        const interval = setInterval(() => {
+            setInitStep(prev => (prev + 1) % stepsBeforeReady);
+        }, 1800);
+
+        return () => clearInterval(interval);
+    }, [backendReady]);
 
     useEffect(() => {
         const checkUpdate = async () => {
@@ -191,11 +238,81 @@ const Layout = ({ children }) => {
     const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
     if (!backendReady) {
+        const steps = [
+            {
+                title: 'Initialize Desktop App',
+                description: 'Checking for updates and configuration…'
+            },
+            {
+                title: 'Start Backend Services',
+                description: 'Initializing API server and core logic…'
+            },
+            {
+                title: 'Start Database',
+                description: 'Connecting to local data store…'
+            },
+            {
+                title: 'Load AI Models',
+                description: 'Preparing review engine…'
+            },
+            {
+                title: 'Ready',
+                description: 'You are good to go!'
+            }
+        ];
+
         return (
             <div className="flex w-screen h-screen bg-slate-50 dark:bg-slate-950 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Starting backend…</p>
+                {/* Window Controls Header */}
+                <header
+                    data-tauri-drag-region
+                    className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end h-8 px-0 bg-transparent"
+                >
+                    <div className="flex items-center h-full ml-auto no-drag">
+                        <WindowControls showCloseConfirmation={true} />
+                    </div>
+                </header>
+
+                <div className="w-full max-w-md rounded-2xl bg-slate-900 text-slate-50 shadow-2xl border border-slate-800 px-6 py-5">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">PR Agent</p>
+                            <h2 className="mt-1 text-sm font-semibold text-slate-50">Preparing your workspace</h2>
+                        </div>
+                        <span className="text-[10px] text-slate-500">Desktop App</span>
+                    </div>
+                    <div className="space-y-2.5">
+                        {steps.map((step, index) => {
+                            const isActive = index === initStep;
+                            const isCompleted = backendReady ? index <= initStep : index < initStep;
+
+                            return (
+                                <div
+                                    key={step.title}
+                                    className="flex items-center justify-between rounded-xl bg-slate-900/40 border border-slate-800 px-3 py-2.5"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-900 border border-slate-700">
+                                            {isCompleted ? (
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                            ) : isActive ? (
+                                                <Loader2 className="w-3.5 h-3.5 text-sky-400 animate-spin" />
+                                            ) : (
+                                                <Circle className="w-3.5 h-3.5 text-slate-600" />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="text-[11px] font-medium text-slate-100">{step.title}</p>
+                                            <p className="text-[10px] text-slate-500">{step.description}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p className="mt-4 text-[10px] text-slate-600">
+                        Backend health check at <span className="font-mono text-slate-400">localhost:47685</span>
+                    </p>
                 </div>
             </div>
         );
@@ -335,12 +452,14 @@ const Layout = ({ children }) => {
                             </div>
                         )}
                         <div className='h-[60%] w-[1px] bg-slate-200 dark:bg-slate-700'></div>
-                        <WindowControls />
+                        <WindowControls showCloseConfirmation={true} />
                     </div>
                 </header>
 
                 <div className={`h-[calc(100vh-2rem)] ${location.pathname.startsWith('/review') ? 'overflow-hidden p-0' : 'overflow-y-auto p-6 max-w-7xl mx-auto scrollbar-none'}`}>
-                    {children}
+                    <SidebarContext.Provider value={{ collapsed, toggleSidebar, setCollapsed }}>
+                        {children}
+                    </SidebarContext.Provider>
                 </div>
             </main >
         </div >

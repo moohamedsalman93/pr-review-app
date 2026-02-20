@@ -1,8 +1,11 @@
 import yaml
 import re
 import asyncio
+import logging
 from typing import List, Optional
 from functools import partial
+
+logger = logging.getLogger(__name__)
 
 from pr_agent.tools.pr_reviewer import PRReviewer
 from pr_agent.tools.pr_code_suggestions import PRCodeSuggestions
@@ -246,13 +249,14 @@ class PRAgentService:
         
         return result
 
-    async def chat_with_pr(self, pr_url: str, question: str) -> str:
+    async def chat_with_pr(self, pr_url: str, question: str, request: Optional[object] = None) -> str:
         """
         Chat with a PR using pr-agent's PRQuestions tool.
         
         Args:
             pr_url: Full PR/MR URL
             question: The user's question about the PR
+            request: Optional FastAPI Request object to check for client disconnection
             
         Returns:
             AI-generated answer
@@ -276,8 +280,39 @@ class PRAgentService:
                 ) from e
             raise e
         
-        # Run the chat tool
-        await chat_tool.run()
+        # Run the chat tool with periodic cancellation check
+        try:
+            # Wrap the run in a task so we can check for cancellation
+            run_task = asyncio.create_task(chat_tool.run())
+            
+            # Check periodically if client disconnected
+            if request:
+                check_interval = 0.3  # Check every 300ms
+                while not run_task.done():
+                    try:
+                        # Check if client disconnected
+                        if await request.is_disconnected():
+                            logger.info("Client disconnected, cancelling chat tool")
+                            run_task.cancel()
+                            # Wait a bit for cancellation to propagate
+                            try:
+                                await asyncio.wait_for(run_task, timeout=0.5)
+                            except (asyncio.CancelledError, asyncio.TimeoutError):
+                                pass
+                            raise asyncio.CancelledError("Client disconnected")
+                        
+                        # Wait with timeout to allow periodic checks
+                        await asyncio.sleep(check_interval)
+                    except asyncio.CancelledError:
+                        # Re-raise cancellation
+                        run_task.cancel()
+                        raise
+            
+            # Wait for task completion
+            await run_task
+        except asyncio.CancelledError:
+            logger.info("Chat tool execution cancelled")
+            raise
         
         # Extract the answer from the tool's prediction
         if hasattr(chat_tool, 'prediction') and chat_tool.prediction:

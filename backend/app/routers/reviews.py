@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -377,6 +377,7 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
 @router.post("/ask", response_model=ChatResponse)
 async def chat_with_pr(
     chat_data: ChatRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -389,8 +390,18 @@ async def chat_with_pr(
     
     pr_agent_service = PRAgentService()
     try:
-        answer = await pr_agent_service.chat_with_pr(review.pr_url, chat_data.question)
+        # Run chat with cancellation support
+        answer = await pr_agent_service.chat_with_pr(review.pr_url, chat_data.question, request)
         return ChatResponse(answer=answer)
+    except asyncio.CancelledError:
+        logger.info(f"Chat request cancelled for review {chat_data.review_id}")
+        raise HTTPException(status_code=499, detail="Request cancelled")
+    except HTTPException:
+        raise
     except Exception as e:
+        # Check if it's a cancellation-related error
+        if "cancelled" in str(e).lower() or "disconnected" in str(e).lower():
+            logger.info(f"Chat request cancelled: {e}")
+            raise HTTPException(status_code=499, detail="Request cancelled")
         logger.error(f"Error in chat_with_pr: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

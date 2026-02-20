@@ -6,6 +6,7 @@ import DiffView from './DiffView';
 import PRDescriptionViewer from './PRDescriptionViewer';
 import ChatDrawer from './ChatDrawer';
 import { exportPRToHTML } from '../utils/exportUtils';
+import { useSidebar } from './Layout';
 import {
     ArrowLeft,
     GitMerge,
@@ -37,12 +38,35 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 
 const PRDetail = () => {
     const { id } = useParams();
+    const { collapsed, toggleSidebar } = useSidebar();
     const [review, setReview] = useState(null);
     const [loading, setLoading] = useState(true);
     const [extending, setExtending] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('description');
     const prevStatusRef = useRef(null);
+    const prevCollapsedRef = useRef(collapsed);
+
+    // Toggle sidebar when chat opens/closes
+    useEffect(() => {
+        if (isChatOpen) {
+            toggleSidebar(true); // Collapse sidebar when chat opens
+        } else {
+            toggleSidebar(false); // Expand sidebar when chat closes
+        }
+    }, [isChatOpen, toggleSidebar]);
+
+    // Close chat when sidebar is manually opened (expanded)
+    useEffect(() => {
+        const wasCollapsed = prevCollapsedRef.current;
+        const isNowExpanded = !collapsed && wasCollapsed;
+        
+        if (isNowExpanded && isChatOpen) {
+            setIsChatOpen(false);
+        }
+        
+        prevCollapsedRef.current = collapsed;
+    }, [collapsed, isChatOpen]);
 
     useEffect(() => {
         const initNotification = async () => {
@@ -145,12 +169,26 @@ const PRDetail = () => {
     }, [review]);
 
     const [expandedSuggestions, setExpandedSuggestions] = useState({});
+    const [activeSuggestion, setActiveSuggestion] = useState(null);
 
     const toggleSuggestion = (id) => {
-        setExpandedSuggestions(prev => ({
-            ...prev,
-            [id]: !prev[id]
-        }));
+        setExpandedSuggestions(prev => {
+            const isNowOpen = !prev[id];
+            const next = {
+                ...prev,
+                [id]: isNowOpen
+            };
+
+            const clickedSuggestion = review?.suggestions?.find(s => s.id === id) || null;
+
+            if (isNowOpen) {
+                setActiveSuggestion(clickedSuggestion);
+            } else if (activeSuggestion && activeSuggestion.id === id) {
+                setActiveSuggestion(null);
+            }
+
+            return next;
+        });
     };
 
     if (loading && !review) {
@@ -538,6 +576,8 @@ const PRDetail = () => {
                 onClose={() => setIsChatOpen(false)}
                 reviewId={id}
                 prTitle={review.pr_title}
+                activeSuggestion={activeSuggestion}
+                onClearSuggestion={() => setActiveSuggestion(null)}
             />
         </div>
     );
