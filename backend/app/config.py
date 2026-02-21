@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 class EnvSettings(BaseSettings):
     """Environment settings - only DATABASE_URL is required from env"""
     database_url: str = "sqlite:///./pr_review.db"
+    pr_review_app_data_dir: str | None = None  # App data directory from Tauri
 
     class Config:
         env_file = ".env"
@@ -72,7 +73,20 @@ def get_settings() -> DatabaseSettings:
 
 def get_database_url() -> str:
     """Get database URL from environment (required for DB connection)"""
-    return get_env_settings().database_url
+    env_settings = get_env_settings()
+    
+    # If app data directory is provided (from Tauri), use it for the database
+    if env_settings.pr_review_app_data_dir:
+        import os
+        db_path = os.path.join(env_settings.pr_review_app_data_dir, "pr_review.db")
+        # Ensure directory exists
+        os.makedirs(env_settings.pr_review_app_data_dir, exist_ok=True)
+        # Convert to absolute path and normalize separators for SQLite URL
+        db_path = os.path.abspath(db_path).replace("\\", "/")
+        return f"sqlite:///{db_path}"
+    
+    # Otherwise use the default relative path
+    return env_settings.database_url
 
 
 def clear_settings_cache():

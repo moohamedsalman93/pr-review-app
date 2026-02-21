@@ -25,15 +25,30 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
+            // Get app data directory and pass it to the sidecar
+            let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+                // Fallback to current directory if app data dir is unavailable
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            });
+            
+            // Ensure the app data directory exists
+            if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
+                eprintln!("Warning: Could not create app data directory: {}", e);
+            }
+
             // Spawn the Python backend (skip if TAURI_NO_SIDECAR is set)
             if std::env::var("TAURI_NO_SIDECAR").is_ok() {
                 println!("TAURI_NO_SIDECAR is set — skipping sidecar, expecting manual backend on port 47685");
             } else {
+                let app_data_dir_str = app_data_dir.to_string_lossy().to_string();
                 tauri::async_runtime::spawn(async move {
                     let sidecar_result = handle
                         .shell()
                         .sidecar("PR-Review-Agent")
-                        .map(|cmd| cmd.args(["--sidecar"]));
+                        .map(|cmd| {
+                            cmd.args(["--sidecar"])
+                                .env("PR_REVIEW_APP_DATA_DIR", &app_data_dir_str)
+                        });
 
                     match sidecar_result {
                         Ok(sidecar_command) => {

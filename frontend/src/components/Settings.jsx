@@ -50,7 +50,14 @@ const SelectField = ({ label, id, value, onChange, options, helpText }) => (
     </div>
 );
 
+const CATEGORIES = [
+    { id: 'gitlab', label: 'GitLab', icon: GitBranch },
+    { id: 'github', label: 'GitHub', icon: Github },
+    { id: 'ai', label: 'AI / LLM', icon: Cpu }
+];
+
 const Settings = () => {
+    const [activeCategory, setActiveCategory] = useState('gitlab');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -145,8 +152,26 @@ const Settings = () => {
                         </div>
                     )}
 
-                    <div className="space-y-10">
+                    {/* Category tabs */}
+                    <div className="flex gap-1 p-1 mb-6 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
+                        {CATEGORIES.map(({ id, label, icon: Icon }) => (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => setActiveCategory(id)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeCategory === id
+                                    ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                            >
+                                <Icon className="w-4 h-4" />
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="space-y-10 min-h-[360px]">
                         {/* GitLab Settings */}
+                        {activeCategory === 'gitlab' && (
                         <section>
                             <SectionHeader
                                 icon={GitBranch}
@@ -174,8 +199,10 @@ const Settings = () => {
                                 />
                             </div>
                         </section>
+                        )}
 
                         {/* GitHub Settings */}
+                        {activeCategory === 'github' && (
                         <section>
                             <SectionHeader
                                 icon={Github}
@@ -210,8 +237,10 @@ const Settings = () => {
                                 </div>
                             </div>
                         </section>
+                        )}
 
                         {/* LLM Settings */}
+                        {activeCategory === 'ai' && (
                         <section>
                             <SectionHeader
                                 icon={Cpu}
@@ -273,6 +302,7 @@ const Settings = () => {
                                 </div>
                             </div>
                         </section>
+                        )}
                     </div>
 
                     <div className="mt-10 flex justify-end">

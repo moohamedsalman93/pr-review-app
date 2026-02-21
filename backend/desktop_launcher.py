@@ -14,6 +14,12 @@ if __name__ == "__main__":
     
     # Add the base directory to sys.path so 'app' and 'pr_agent' can be found
     sys.path.insert(0, base_dir)
+    
+    # If app data directory is set (from Tauri), change working directory to it
+    # This ensures relative paths work correctly
+    app_data_dir = os.environ.get("PR_REVIEW_APP_DATA_DIR")
+    if app_data_dir and os.path.exists(app_data_dir):
+        os.chdir(app_data_dir)
 
     # Import app directly
     try:

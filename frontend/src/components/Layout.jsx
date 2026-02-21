@@ -22,8 +22,10 @@ import {
     Download,
     CheckCircle2,
     Circle,
-    Loader2
+    Loader2,
+    Info
 } from 'lucide-react';
+import pkg from '../../package.json';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 import { confirm } from '@tauri-apps/plugin-dialog';
 
@@ -141,6 +143,7 @@ const Layout = ({ children }) => {
     const [updateError, setUpdateError] = useState(null);
     const [backendReady, setBackendReady] = useState(false);
     const [initStep, setInitStep] = useState(0);
+    const [showAboutPopup, setShowAboutPopup] = useState(false);
     const location = useLocation();
 
     useEffect(() => {
@@ -374,6 +377,13 @@ const Layout = ({ children }) => {
                 {/* Sidebar Footer */}
                 <div className="p-3 border-t border-slate-100 dark:border-slate-800 space-y-1">
                     <button
+                        onClick={() => setShowAboutPopup(true)}
+                        className="flex items-center gap-3 w-full p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
+                    >
+                        <Info className="w-4 h-4" />
+                        {!collapsed && <span className="text-xs font-medium">About</span>}
+                    </button>
+                    <button
                         onClick={toggleTheme}
                         className="flex items-center gap-3 w-full p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
                     >
@@ -461,8 +471,49 @@ const Layout = ({ children }) => {
                         {children}
                     </SidebarContext.Provider>
                 </div>
-            </main >
-        </div >
+            </main>
+
+            {/* About popup */}
+            {showAboutPopup && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 animate-fade-in" onClick={() => setShowAboutPopup(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-800" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800">
+                            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">About</h2>
+                            <button
+                                onClick={() => setShowAboutPopup(false)}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <img src="/logo.png" alt="" className="w-12 h-12 rounded-xl shadow-lg" />
+                                <div>
+                                    <p className="text-base font-bold text-slate-900 dark:text-slate-100">PR Agent</p>
+                                    <p className="text-xs font-medium text-primary-600 dark:text-primary-400 uppercase tracking-wider">Advanced Review</p>
+                                </div>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-400">
+                                Desktop app for AI-powered pull request reviews. Configure rules, connect GitLab or GitHub, and run reviews powered by Ollama or other LLM providers.
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500 font-mono">Version {pkg.version}</p>
+                            <a
+                                href="https://github.com/Codium-ai/pr-agent"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    openExternalLink('https://github.com/Codium-ai/pr-agent');
+                                }}
+                                className="flex items-center gap-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                            >
+                                <Github className="w-4 h-4" />
+                                PR Agent on GitHub
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
