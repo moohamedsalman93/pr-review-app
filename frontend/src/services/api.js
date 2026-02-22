@@ -65,6 +65,17 @@ export const settingsService = {
     }
 };
 
+export const appInfoService = {
+    getInfo: async () => {
+        const response = await api.get('/info');
+        return response.data;
+    },
+    getLogs: async (limit = 200) => {
+        const response = await api.get('/logs', { params: { limit } });
+        return response.data;
+    }
+};
+
 export const ruleSetService = {
     // Get all rule sets
     getRuleSets: async () => {

@@ -28,6 +28,7 @@ import {
 import pkg from '../../package.json';
 import { getCurrentWindow, Window } from '@tauri-apps/api/window';
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { appInfoService } from '../services/api';
 
 const appWindow = getCurrentWindow();
 
@@ -144,6 +145,10 @@ const Layout = ({ children }) => {
     const [backendReady, setBackendReady] = useState(false);
     const [initStep, setInitStep] = useState(0);
     const [showAboutPopup, setShowAboutPopup] = useState(false);
+    const [aboutInfo, setAboutInfo] = useState(null);
+    const [aboutLogs, setAboutLogs] = useState([]);
+    const [aboutLogsLoading, setAboutLogsLoading] = useState(false);
+    const [aboutLogsError, setAboutLogsError] = useState(null);
     const location = useLocation();
 
     useEffect(() => {
@@ -174,6 +179,39 @@ const Layout = ({ children }) => {
 
         return () => clearInterval(interval);
     }, [backendReady]);
+
+    useEffect(() => {
+        if (!showAboutPopup) return;
+        setAboutLogsError(null);
+        const load = async () => {
+            try {
+                const [info, data] = await Promise.all([
+                    appInfoService.getInfo(),
+                    appInfoService.getLogs(200).catch(() => ({ logs: [] }))
+                ]);
+                setAboutInfo(info);
+                setAboutLogs(data.logs || []);
+            } catch (e) {
+                setAboutInfo(null);
+                setAboutLogs([]);
+                setAboutLogsError(e.message || 'Could not load system info');
+            }
+        };
+        load();
+    }, [showAboutPopup]);
+
+    const refreshAboutLogs = async () => {
+        setAboutLogsLoading(true);
+        setAboutLogsError(null);
+        try {
+            const data = await appInfoService.getLogs(200);
+            setAboutLogs(data.logs || []);
+        } catch (e) {
+            setAboutLogsError(e.message || 'Could not load logs');
+        } finally {
+            setAboutLogsLoading(false);
+        }
+    };
 
     useEffect(() => {
         const checkUpdate = async () => {
@@ -476,8 +514,8 @@ const Layout = ({ children }) => {
             {/* About popup */}
             {showAboutPopup && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 animate-fade-in" onClick={() => setShowAboutPopup(false)}>
-                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-sm border border-slate-200 dark:border-slate-800" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col border border-slate-200 dark:border-slate-800" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
                             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">About</h2>
                             <button
                                 onClick={() => setShowAboutPopup(false)}
@@ -486,7 +524,7 @@ const Layout = ({ children }) => {
                                 <X className="w-5 h-5 text-slate-500" />
                             </button>
                         </div>
-                        <div className="p-5 space-y-4">
+                        <div className="p-5 space-y-4 overflow-y-auto">
                             <div className="flex items-center gap-3">
                                 <img src="/logo.png" alt="" className="w-12 h-12 rounded-xl shadow-lg" />
                                 <div>
@@ -509,6 +547,53 @@ const Layout = ({ children }) => {
                                 <Github className="w-4 h-4" />
                                 PR Agent on GitHub
                             </a>
+
+                            {/* System info & logs */}
+                            <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Info className="w-4 h-4 text-slate-500" />
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">System info & logs</span>
+                                </div>
+                                {aboutLogsError && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">{aboutLogsError}</p>
+                                )}
+                                {aboutInfo && (
+                                    <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-xs font-mono text-slate-700 dark:text-slate-300 space-y-1 break-all">
+                                        <p><span className="text-slate-500 dark:text-slate-400">Database:</span> {aboutInfo.database_path}</p>
+                                        <p><span className="text-slate-500 dark:text-slate-400">App data dir:</span> {aboutInfo.app_data_dir}</p>
+                                        <p><span className="text-slate-500 dark:text-slate-400">CWD:</span> {aboutInfo.cwd}</p>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">Recent backend logs</span>
+                                    <button
+                                        type="button"
+                                        onClick={refreshAboutLogs}
+                                        disabled={aboutLogsLoading}
+                                        className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        {aboutLogsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                        Refresh
+                                    </button>
+                                </div>
+                                <div className="rounded-lg bg-slate-900 dark:bg-slate-950 text-slate-300 p-3 font-mono text-xs overflow-x-auto overflow-y-auto max-h-48 min-h-[80px]">
+                                    {aboutLogs.length === 0 && !aboutLogsError && (
+                                        <p className="text-slate-500">No log entries yet.</p>
+                                    )}
+                                    {aboutLogs.map((entry, i) => (
+                                        <div key={i} className="flex gap-2 py-0.5 border-b border-slate-800 last:border-0">
+                                            <span className="text-slate-500 shrink-0">{entry.timestamp}</span>
+                                            <span className={
+                                                entry.level === 'error' ? 'text-red-400' :
+                                                entry.level === 'warning' ? 'text-amber-400' : 'text-slate-400'
+                                            }>
+                                                [{entry.level}]
+                                            </span>
+                                            <span className="break-all">{entry.message}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

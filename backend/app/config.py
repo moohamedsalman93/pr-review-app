@@ -89,6 +89,23 @@ def get_database_url() -> str:
     return env_settings.database_url
 
 
+def get_diagnostics() -> dict:
+    """Return paths and env info for display in About / logs (no secrets)."""
+    import os
+    env_settings = get_env_settings()
+    db_url = get_database_url()
+    # Extract display path from sqlite URL
+    if db_url.startswith("sqlite:///"):
+        database_path = db_url.replace("sqlite:///", "").replace("/", os.sep)
+    else:
+        database_path = db_url
+    return {
+        "database_path": database_path,
+        "app_data_dir": env_settings.pr_review_app_data_dir or "(default / current directory)",
+        "cwd": os.getcwd(),
+    }
+
+
 def clear_settings_cache():
     """Clear settings cache - call after updating settings"""
     global _settings_cache
