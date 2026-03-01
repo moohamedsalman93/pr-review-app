@@ -124,14 +124,14 @@ const NavItem = ({ to, icon: Icon, label, collapsed, active }) => (
 
 const Layout = ({ children }) => {
     const [collapsed, setCollapsed] = useState(false);
-    
-    const toggleSidebar = (forceState = null) => {
+
+    const toggleSidebar = React.useCallback((forceState = null) => {
         if (forceState !== null) {
             setCollapsed(forceState);
         } else {
             setCollapsed(prev => !prev);
         }
-    };
+    }, []);
     const [isDarkMode, setIsDarkMode] = useState(() => {
         const saved = localStorage.getItem('theme');
         return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -585,7 +585,7 @@ const Layout = ({ children }) => {
                                             <span className="text-slate-500 shrink-0">{entry.timestamp}</span>
                                             <span className={
                                                 entry.level === 'error' ? 'text-red-400' :
-                                                entry.level === 'warning' ? 'text-amber-400' : 'text-slate-400'
+                                                    entry.level === 'warning' ? 'text-amber-400' : 'text-slate-400'
                                             }>
                                                 [{entry.level}]
                                             </span>
