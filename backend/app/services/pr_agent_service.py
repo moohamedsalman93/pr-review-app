@@ -35,9 +35,12 @@ class PRAgentService:
         model = self.app_settings.ai_model
         
         # Handle different providers
-        if provider == "ollama":
+        if provider in ["ollama", "ollama_cloud"]:
             if self.app_settings.ai_base_url:
                 get_settings().set("OLLAMA.API_BASE", self.app_settings.ai_base_url)
+            
+            if provider == "ollama_cloud" and self.app_settings.ai_api_key:
+                get_settings().set("OLLAMA.API_KEY", self.app_settings.ai_api_key)
             
             # Set model (Ollama format: ollama/model_name)
             if not model.startswith("ollama/"):
@@ -153,101 +156,133 @@ class PRAgentService:
             get_settings().set("pr_code_suggestions.max_number_of_calls", 6)
         else:
             get_settings().set("pr_code_suggestions.max_number_of_calls", 3)
-        
-        # Initialize tools
-        await log("Initializing PR-Agent tools...")
-        try:
-            reviewer = PRReviewer(
-                pr_url=pr_url,
-                is_answer=False,
-                is_auto=False,
-                args=None,
-                ai_handler=partial(LiteLLMAIHandler)
-            )
-            
-            improver = PRCodeSuggestions(
-                pr_url=pr_url,
-                args=None,
-                ai_handler=partial(LiteLLMAIHandler)
-            )
 
-            describer = PRDescription(
-                pr_url=pr_url,
-                args=None,
-                ai_handler=partial(LiteLLMAIHandler)
-            )
-        except Exception as e:
-            # Catch initialization errors (often token/permission related)
-            error_str = str(e)
-            if "Failed to get git provider" in error_str or "404" in error_str:
-                friendly_msg = (
-                    "GitHub Access Error: 404 Not Found. "
-                    "Please check your GitHub Token permissions. "
-                    "If using a Fine-grained Personal Access Token, ensure it has "
-                    "'Contents: Read-only' and 'Pull Requests: Read-only' permissions "
-                    "and matches the repository owner."
-                )
-                await log(f"CRITICAL ERROR: {friendly_msg}", "error")
-                raise ValueError(friendly_msg) from e
-            raise e
-        
-        # Run the review, improvement and description tools in parallel
-        await log("Running AI analysis (review, suggestions, and description) in parallel...")
-        review_task = asyncio.create_task(reviewer.run())
-        improve_task = asyncio.create_task(improver.run())
-        describe_task = asyncio.create_task(describer.run())
-        
-        # Wait for tasks with timeout
-        done, pending = await asyncio.wait(
-            [review_task, improve_task, describe_task], 
-            timeout=600
-        )
-        
-        if pending:
-            await log("Warning: Some AI tasks timed out", "warning")
-            for task in pending:
-                task.cancel()
+        review_runs = int(getattr(self.app_settings, "review_runs", 1) or 1)
+        review_runs = max(1, min(review_runs, 5))
 
-        await log("Processing AI results...")
-        result = {
+        aggregated = {
             "score": None,
             "effort": None,
             "security_concerns": None,
             "can_be_split": None,
             "suggestions": [],
-            "description": None
+            "description": None,
         }
-        
-        # Extract metadata from reviewer
-        if reviewer.prediction:
-            try:
-                review_data = load_yaml(reviewer.prediction.strip()).get('review', {})
-                result["score"] = self._parse_int(review_data.get('score'))
-                result["effort"] = self._parse_int(review_data.get('estimated_effort_to_review_[1-5]'))
-                result["security_concerns"] = review_data.get('security_concerns')
-                if result["security_concerns"] and result["security_concerns"].lower() == 'no':
-                    result["security_concerns"] = None
-                result["can_be_split"] = review_data.get('can_be_split')
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Error parsing reviewer output: {e}")
-        
-        # Extract detailed suggestions from improver
-        if hasattr(improver, 'data') and improver.data:
-            for suggestion_data in improver.data.get('code_suggestions', []):
-                suggestion = self._convert_suggestion(suggestion_data)
-                if suggestion:
-                    result["suggestions"].append(suggestion)
-        
-        # Fallback to reviewer suggestions if improver found none
-        if not result["suggestions"] and reviewer.prediction:
-            result["suggestions"] = self._parse_review_output(reviewer.prediction, reviewer.git_provider)
+        seen_suggestion_keys = set()
+        last_error: Exception | None = None
 
-        # Extract PR description from describer
-        if hasattr(describer, 'prediction') and describer.prediction:
-            result["description"] = describer.prediction
-        
-        return result
+        for run_idx in range(review_runs):
+            await log(f"Initializing PR-Agent tools (pass {run_idx + 1}/{review_runs})...")
+            try:
+                reviewer = PRReviewer(
+                    pr_url=pr_url,
+                    is_answer=False,
+                    is_auto=False,
+                    args=None,
+                    ai_handler=partial(LiteLLMAIHandler),
+                )
+
+                improver = PRCodeSuggestions(
+                    pr_url=pr_url,
+                    args=None,
+                    ai_handler=partial(LiteLLMAIHandler),
+                )
+
+                describer = PRDescription(
+                    pr_url=pr_url,
+                    args=None,
+                    ai_handler=partial(LiteLLMAIHandler),
+                )
+            except Exception as e:
+                # Catch initialization errors (often token/permission related)
+                error_str = str(e)
+                if "Failed to get git provider" in error_str or "404" in error_str:
+                    friendly_msg = (
+                        "GitHub Access Error: 404 Not Found. "
+                        "Please check your GitHub Token permissions. "
+                        "If using a Fine-grained Personal Access Token, ensure it has "
+                        "'Contents: Read-only' and 'Pull Requests: Read-only' permissions "
+                        "and matches the repository owner."
+                    )
+                    await log(f"CRITICAL ERROR: {friendly_msg}", "error")
+                    raise ValueError(friendly_msg) from e
+                raise
+
+            await log(f"Running AI analysis in parallel (pass {run_idx + 1}/{review_runs})...")
+            review_task = asyncio.create_task(reviewer.run())
+            improve_task = asyncio.create_task(improver.run())
+            describe_task = asyncio.create_task(describer.run())
+
+            done, pending = await asyncio.wait([review_task, improve_task, describe_task], timeout=600)
+            if pending:
+                await log("Warning: Some AI tasks timed out", "warning")
+                for task in pending:
+                    task.cancel()
+
+            await log(f"Processing AI results (pass {run_idx + 1}/{review_runs})...")
+
+            try:
+                # Metadata from reviewer
+                if reviewer.prediction:
+                    try:
+                        review_data = load_yaml(reviewer.prediction.strip()).get("review", {})
+                        score = self._parse_int(review_data.get("score"))
+                        effort = self._parse_int(review_data.get("estimated_effort_to_review_[1-5]"))
+                        sec = review_data.get("security_concerns")
+                        if sec and isinstance(sec, str) and sec.lower() == "no":
+                            sec = None
+                        can_split = review_data.get("can_be_split")
+
+                        if score is not None:
+                            aggregated["score"] = max(aggregated["score"] or 0, score)
+                        if effort is not None:
+                            aggregated["effort"] = max(aggregated["effort"] or 0, effort)
+                        if aggregated["security_concerns"] is None and sec:
+                            aggregated["security_concerns"] = sec
+                        if aggregated["can_be_split"] is None and can_split is not None:
+                            aggregated["can_be_split"] = can_split
+                    except Exception as e:
+                        logging.getLogger(__name__).error(f"Error parsing reviewer output: {e}")
+
+                # Suggestions from improver
+                pass_suggestions: List[CodeSuggestion] = []
+                if hasattr(improver, "data") and improver.data:
+                    for suggestion_data in improver.data.get("code_suggestions", []):
+                        suggestion = self._convert_suggestion(suggestion_data)
+                        if suggestion:
+                            pass_suggestions.append(suggestion)
+
+                # Fallback suggestions from reviewer
+                if not pass_suggestions and reviewer.prediction:
+                    pass_suggestions = self._parse_review_output(reviewer.prediction, reviewer.git_provider)
+
+                # Dedupe + append
+                added = 0
+                for s in pass_suggestions:
+                    key = f"{s.file_path}:{s.line_start}:{s.line_end}:{(s.suggestion or '')[:80]}"
+                    if key in seen_suggestion_keys:
+                        continue
+                    seen_suggestion_keys.add(key)
+                    aggregated["suggestions"].append(s)
+                    added += 1
+
+                await log(f"Pass {run_idx + 1}/{review_runs} produced {len(pass_suggestions)} suggestions ({added} new).")
+
+                # Description (keep first non-empty)
+                if aggregated["description"] is None and hasattr(describer, "prediction") and describer.prediction:
+                    aggregated["description"] = describer.prediction
+
+                last_error = None
+            except Exception as e:
+                last_error = e
+                await log(f"Warning: review pass {run_idx + 1}/{review_runs} failed: {e}", "warning")
+                continue
+
+        if aggregated["suggestions"] or aggregated["description"] or aggregated["score"] is not None:
+            return aggregated
+        if last_error:
+            raise last_error
+        return aggregated
 
     async def chat_with_pr(self, pr_url: str, question: str, request: Optional[object] = None) -> str:
         """

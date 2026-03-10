@@ -6,12 +6,25 @@ from .database import engine, Base
 from . import models  # Explicitly import models to ensure they are registered with Base.metadata
 from .routers import reviews_router, settings_router, rule_sets_router
 from .log_buffer import install_buffer_handler, get_recent_logs
+from sqlalchemy import text
 
 # In-memory log buffer for About / diagnostics (install before other code logs)
 install_buffer_handler()
 
+# Lightweight migration helper (SQLite): add missing columns.
+def _sqlite_ensure_column(table_name: str, column_name: str, column_ddl: str) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as conn:
+        cols = [row[1] for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()]
+        if column_name not in cols:
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_ddl}"))
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+# Ensure newly-added settings columns exist for existing DBs.
+_sqlite_ensure_column("app_settings", "review_runs", "review_runs INTEGER DEFAULT 1")
 
 app = FastAPI(
     title="PR Review API",

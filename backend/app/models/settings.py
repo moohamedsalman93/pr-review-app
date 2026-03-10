@@ -20,5 +20,8 @@ class AppSettings(Base):
     ai_api_key = Column(Text, default="")
     ai_base_url = Column(String(500), default="http://localhost:11434")
     max_tokens = Column(Integer, default=128000)
+    # Number of independent AI review passes to run per PR.
+    # Higher values can yield more coverage but increase latency/cost.
+    review_runs = Column(Integer, default=1)
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

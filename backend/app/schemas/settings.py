@@ -16,6 +16,7 @@ class SettingsBase(BaseModel):
     ai_api_key: str = ""
     ai_base_url: str = "http://localhost:11434"
     max_tokens: int = 128000
+    review_runs: int = 1
 
 
 

@@ -35,8 +35,16 @@ class DatabaseSettings:
         self.ai_provider = db_settings.ai_provider or "ollama"
         self.ai_model = db_settings.ai_model or "gemini-3-flash-preview:latest"
         self.ai_api_key = db_settings.ai_api_key or ""
-        self.ai_base_url = db_settings.ai_base_url or "http://localhost:11434"
+        # Treat NULL/blank as "use provider default" (cloud != local)
+        base_url = (db_settings.ai_base_url or "").strip()
+        if not base_url:
+            if self.ai_provider == "ollama_cloud":
+                base_url = "https://ollama.com"
+            else:
+                base_url = "http://localhost:11434"
+        self.ai_base_url = base_url
         self.max_tokens = db_settings.max_tokens or 128000
+        self.review_runs = db_settings.review_runs or 1
 
 
 
@@ -99,9 +107,11 @@ def get_diagnostics() -> dict:
         database_path = db_url.replace("sqlite:///", "").replace("/", os.sep)
     else:
         database_path = db_url
+    from .log_buffer import get_log_file_path
     return {
         "database_path": database_path,
         "app_data_dir": env_settings.pr_review_app_data_dir or "(default / current directory)",
+        "log_file_path": os.path.abspath(get_log_file_path()),
         "cwd": os.getcwd(),
     }
 
