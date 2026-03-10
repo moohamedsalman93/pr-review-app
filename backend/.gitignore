@@ -1,0 +1,4 @@
+## Python cache / bytecode (backend-local ignores)
+__pycache__/
+*.py[cod]
+*$py.class
