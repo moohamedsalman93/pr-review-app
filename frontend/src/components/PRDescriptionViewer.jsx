@@ -124,20 +124,47 @@ const MermaidDiagram = ({ diagram }) => {
     );
 };
 
+/** Strip optional markdown code fence so yaml.load sees real YAML (models often wrap output in ```yaml). */
+function yamlStringFromDescription(raw) {
+    if (!raw || typeof raw !== 'string') return raw;
+    let s = raw.trim();
+    if (s.charCodeAt(0) === 0xfeff) s = s.slice(1).trim();
+    const open = /^```[\w-]*\s*\r?\n/;
+    if (open.test(s)) {
+        s = s.replace(open, '');
+        s = s.replace(/\r?\n```\s*$/, '').replace(/```\s*$/, '');
+    }
+    return s.trim();
+}
+
 const PRDescriptionViewer = ({ description }) => {
     const parsedData = useMemo(() => {
         if (!description) return null;
 
-        try {
-            // Try to parse the YAML
-            const parsed = yaml.load(description);
-            return parsed;
-        } catch (error) {
-            // If parsing fails, return null to show raw text
-            console.error('Failed to parse YAML:', error);
-            return null;
+        const stripped = yamlStringFromDescription(description);
+        const rawTrim = description.trim();
+        const candidates = [];
+        if (stripped) candidates.push(stripped);
+        if (rawTrim && rawTrim !== stripped) candidates.push(rawTrim);
+        for (const text of candidates) {
+            try {
+                const parsed = yaml.load(text);
+                if (parsed !== null && typeof parsed === 'object') return parsed;
+            } catch {
+                /* try next */
+            }
         }
+        console.error('Failed to parse PR description as YAML');
+        return null;
     }, [description]);
+
+    const typeList = useMemo(() => {
+        const t = parsedData?.type;
+        if (t == null) return [];
+        if (Array.isArray(t)) return t.filter(Boolean);
+        if (typeof t === 'string' && t.trim()) return [t.trim()];
+        return [];
+    }, [parsedData]);
 
     if (!parsedData) {
         // Fallback to raw display if parsing fails
@@ -164,14 +191,14 @@ const PRDescriptionViewer = ({ description }) => {
             )}
 
             {/* Type */}
-            {parsedData.type && Array.isArray(parsedData.type) && parsedData.type.length > 0 && (
+            {typeList.length > 0 && (
                 <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                         <Tag className="w-4 h-4" />
                         Type
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        {parsedData.type.map((type, idx) => (
+                        {typeList.map((type, idx) => (
                             <span
                                 key={idx}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"

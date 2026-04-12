@@ -132,7 +132,8 @@ def get_diagnostics() -> dict:
         (env_settings.gitlab_oauth_client_id or "").strip()
         and (env_settings.gitlab_oauth_client_secret or "").strip()
     )
-    bridge = bool((env_settings.pr_review_oauth_bridge_url or "").strip())
+    bridge_url = (env_settings.pr_review_oauth_bridge_url or "").strip().rstrip("/")
+    bridge = bool(bridge_url)
     return {
         "database_path": database_path,
         "app_data_dir": env_settings.pr_review_app_data_dir or "(default / current directory)",
@@ -141,6 +142,7 @@ def get_diagnostics() -> dict:
         "bundled_github_oauth_configured": gh_pub,
         "bundled_gitlab_oauth_configured": gl_pub,
         "oauth_bridge_url_configured": bridge,
+        "oauth_bridge_base_url": bridge_url,
     }
 
 

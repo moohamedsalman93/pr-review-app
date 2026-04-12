@@ -178,9 +178,15 @@ def update_settings(
     settings.gitlab_client_id = settings_data.gitlab_client_id
     if (settings_data.gitlab_client_secret or "").strip():
         settings.gitlab_client_secret = settings_data.gitlab_client_secret
-    if (settings_data.github_token or "").strip():
+    if settings_data.disconnect_github:
+        settings.github_token = ""
+        settings.github_refresh_token = ""
+    elif (settings_data.github_token or "").strip():
         settings.github_token = settings_data.github_token
-    if (settings_data.gitlab_token or "").strip():
+    if settings_data.disconnect_gitlab:
+        settings.gitlab_token = ""
+        settings.gitlab_refresh_token = ""
+    elif (settings_data.gitlab_token or "").strip():
         settings.gitlab_token = settings_data.gitlab_token
     
     # Update AI settings

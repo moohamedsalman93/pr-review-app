@@ -52,3 +52,4 @@ frontend/src-tauri/desktop_launcher-x86_64-pc-windows-msvc.exe
 
 # --- Temporary Assets ---
 backend/app_icon_square.png
+oauth-bridge

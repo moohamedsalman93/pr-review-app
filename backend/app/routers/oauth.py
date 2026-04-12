@@ -9,11 +9,11 @@ import base64
 import hashlib
 import secrets
 import time
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -77,7 +77,30 @@ async def github_oauth_start(db: Session = Depends(get_db)):
                 except Exception:
                     detail = r.text or str(r.status_code)
                 raise HTTPException(status_code=502, detail=f"OAuth bridge error: {detail}")
-            return r.json()
+            try:
+                data = r.json()
+            except Exception:
+                raise HTTPException(
+                    status_code=502,
+                    detail="OAuth bridge returned non-JSON from /github/start.",
+                )
+            auth_url = data.get("authorize_url")
+            st = data.get("state")
+            if (
+                not isinstance(auth_url, str)
+                or not auth_url.startswith("https://")
+                or not isinstance(st, str)
+                or len(st) < 8
+            ):
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "OAuth bridge /github/start returned an invalid payload (expected "
+                        "authorize_url and state). Deploy the real oauth-bridge from this repo; "
+                        "a placeholder function returns JSON without those fields."
+                    ),
+                )
+            return {"authorize_url": auth_url, "state": st}
         except HTTPException:
             raise
         except Exception as e:
@@ -209,7 +232,10 @@ async def github_oauth_callback(
 
 
 @router.get("/github/poll")
-async def github_oauth_poll(state: str, db: Session = Depends(get_db)):
+async def github_oauth_poll(
+    state: Annotated[str, Query(min_length=8)],
+    db: Session = Depends(get_db),
+):
     bridge = (get_env_settings().pr_review_oauth_bridge_url or "").strip().rstrip("/")
     if bridge:
         try:
@@ -219,6 +245,13 @@ async def github_oauth_poll(state: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=502, detail=f"OAuth bridge poll failed: {e}")
         if r.status_code == 404:
             raise HTTPException(status_code=404, detail="Unknown state")
+        if r.status_code >= 400:
+            try:
+                body = r.json()
+                detail = body.get("detail", r.text)
+            except Exception:
+                detail = r.text or str(r.status_code)
+            raise HTTPException(status_code=r.status_code, detail=str(detail))
         try:
             data = r.json()
         except Exception:
@@ -383,7 +416,7 @@ async def gitlab_oauth_callback(
 
 
 @router.get("/gitlab/poll")
-async def gitlab_oauth_poll(state: str):
+async def gitlab_oauth_poll(state: Annotated[str, Query(min_length=8)]):
     async with _lock:
         _cleanup_stale()
         row = _results.get(state)

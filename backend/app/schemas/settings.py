@@ -39,4 +39,7 @@ class SettingsResponse(SettingsBase):
 
 
 class SettingsUpdate(SettingsBase):
-    pass
+    """PUT body: set disconnect_* to clear stored tokens (OAuth or PAT)."""
+
+    disconnect_github: bool = False
+    disconnect_gitlab: bool = False

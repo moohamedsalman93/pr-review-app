@@ -84,7 +84,11 @@ export const oauthService = {
     return response.data;
   },
   pollGithub: async (state) => {
-    const response = await api.get("/oauth/github/poll", { params: { state } });
+    const s = state == null ? "" : String(state);
+    if (s.length < 8) {
+      throw new Error("OAuth poll requires a valid state from Connect with GitHub.");
+    }
+    const response = await api.get("/oauth/github/poll", { params: { state: s } });
     return response.data;
   },
   startGitlab: async () => {
@@ -92,7 +96,11 @@ export const oauthService = {
     return response.data;
   },
   pollGitlab: async (state) => {
-    const response = await api.get("/oauth/gitlab/poll", { params: { state } });
+    const s = state == null ? "" : String(state);
+    if (s.length < 8) {
+      throw new Error("OAuth poll requires a valid state from Connect with GitLab.");
+    }
+    const response = await api.get("/oauth/gitlab/poll", { params: { state: s } });
     return response.data;
   },
 };
