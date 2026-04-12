@@ -137,6 +137,9 @@ class PRAgentService:
             if log_callback:
                 await log_callback(msg, level)
 
+        # Refresh DB-backed options (e.g. review_runs) in case settings cache was updated after service init.
+        self.app_settings = get_app_settings()
+
         # Configure git provider for this PR
         self._configure_git_provider(pr_url)
         
@@ -213,11 +216,26 @@ class PRAgentService:
             improve_task = asyncio.create_task(improver.run())
             describe_task = asyncio.create_task(describer.run())
 
-            done, pending = await asyncio.wait([review_task, improve_task, describe_task], timeout=600)
+            # Three LLM-heavy tools in parallel; 600s is often too tight on slow providers.
+            per_pass_timeout = 900
+            done, pending = await asyncio.wait(
+                [review_task, improve_task, describe_task],
+                timeout=per_pass_timeout,
+            )
             if pending:
-                await log("Warning: Some AI tasks timed out", "warning")
+                await log(
+                    f"Warning: Some AI tasks timed out after {per_pass_timeout}s",
+                    "warning",
+                )
                 for task in pending:
                     task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+
+            for task in done:
+                try:
+                    await task
+                except Exception as e:
+                    await log(f"AI task finished with error: {e}", "warning")
 
             await log(f"Processing AI results (pass {run_idx + 1}/{review_runs})...")
 
@@ -246,8 +264,13 @@ class PRAgentService:
 
                 # Suggestions from improver
                 pass_suggestions: List[CodeSuggestion] = []
-                if hasattr(improver, "data") and improver.data:
-                    for suggestion_data in improver.data.get("code_suggestions", []):
+                if hasattr(improver, "data") and isinstance(improver.data, dict):
+                    raw_list = improver.data.get("code_suggestions")
+                    if not isinstance(raw_list, list):
+                        raw_list = []
+                    for suggestion_data in raw_list:
+                        if not isinstance(suggestion_data, dict):
+                            continue
                         suggestion = self._convert_suggestion(suggestion_data)
                         if suggestion:
                             pass_suggestions.append(suggestion)
@@ -468,12 +491,19 @@ class PRAgentService:
             line_start = suggestion_data.get('relevant_lines_start') or suggestion_data.get('start_line') or suggestion_data.get('line_start')
             line_end = suggestion_data.get('relevant_lines_end') or suggestion_data.get('end_line') or suggestion_data.get('line_end') or line_start
             
-            # Extract suggestion text
+            # Extract suggestion text (pr-agent / model variants use different keys)
             suggestion_text = (
                 suggestion_data.get('improved_code') or
-                suggestion_data.get('suggestion') or 
-                suggestion_data.get('suggestion_content', '')
+                suggestion_data.get('suggestion') or
+                suggestion_data.get('suggestion_content') or
+                suggestion_data.get('issue_content') or
+                suggestion_data.get('description') or
+                ''
             )
+            if isinstance(suggestion_text, str):
+                suggestion_text = suggestion_text.strip()
+            if not suggestion_text:
+                return None
             
             # Extract original code if available
             original_code = suggestion_data.get('existing_code') or suggestion_data.get('original_code') or suggestion_data.get('code', None)

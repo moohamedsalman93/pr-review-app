@@ -9,6 +9,8 @@ class SettingsBase(BaseModel):
     github_token: str = ""
     github_client_id: str = ""
     github_client_secret: str = ""
+    gitlab_client_id: str = ""
+    gitlab_client_secret: str = ""
     
     # AI settings
     ai_provider: str = "ollama"
@@ -23,6 +25,14 @@ class SettingsBase(BaseModel):
 class SettingsResponse(SettingsBase):
     id: int
     updated_at: Optional[datetime] = None
+    github_token_configured: bool = False
+    gitlab_token_configured: bool = False
+    github_client_secret_set: bool = False
+    gitlab_client_secret_set: bool = False
+    github_oauth_ready: bool = False
+    gitlab_oauth_ready: bool = False
+    github_publisher_oauth: bool = False
+    gitlab_publisher_oauth: bool = False
 
     class Config:
         from_attributes = True

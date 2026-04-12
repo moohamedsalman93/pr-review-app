@@ -30,6 +30,7 @@ backend/poetry.lock
 backend/*.db
 backend/*.sqlite
 backend/.env
+oauth-bridge/.env
 backend/tiktoken_cache/
 
 # --- Sidecar Binaries (Tauri) ---

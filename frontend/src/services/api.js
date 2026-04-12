@@ -78,6 +78,25 @@ export const settingsService = {
   },
 };
 
+export const oauthService = {
+  startGithub: async () => {
+    const response = await api.post("/oauth/github/start");
+    return response.data;
+  },
+  pollGithub: async (state) => {
+    const response = await api.get("/oauth/github/poll", { params: { state } });
+    return response.data;
+  },
+  startGitlab: async () => {
+    const response = await api.post("/oauth/gitlab/start");
+    return response.data;
+  },
+  pollGitlab: async (state) => {
+    const response = await api.get("/oauth/gitlab/poll", { params: { state } });
+    return response.data;
+  },
+};
+
 export const appInfoService = {
   getInfo: async () => {
     const response = await api.get("/info");

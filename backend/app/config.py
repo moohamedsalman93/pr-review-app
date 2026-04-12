@@ -12,6 +12,18 @@ class EnvSettings(BaseSettings):
     database_url: str = "sqlite:///./pr_review.db"
     pr_review_app_data_dir: str | None = None  # App data directory from Tauri
 
+    # Optional bundled OAuth (publisher sets these so users only click Connect).
+    # Env names: GITHUB_OAUTH_CLIENT_ID, GITHUB_OAUTH_CLIENT_SECRET, etc.
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+    gitlab_oauth_client_id: str = ""
+    gitlab_oauth_client_secret: str = ""
+    # GitLab bundled OAuth applies when Settings GitLab URL matches this origin.
+    gitlab_oauth_instance_url: str = "https://gitlab.com"
+
+    # Optional hosted GitHub OAuth bridge (secret stays on server). See /oauth-bridge in repo.
+    pr_review_oauth_bridge_url: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -32,6 +44,10 @@ class DatabaseSettings:
         self.github_token = db_settings.github_token or ""
         self.github_client_id = db_settings.github_client_id or ""
         self.github_client_secret = db_settings.github_client_secret or ""
+        self.github_refresh_token = getattr(db_settings, "github_refresh_token", None) or ""
+        self.gitlab_client_id = getattr(db_settings, "gitlab_client_id", None) or ""
+        self.gitlab_client_secret = getattr(db_settings, "gitlab_client_secret", None) or ""
+        self.gitlab_refresh_token = getattr(db_settings, "gitlab_refresh_token", None) or ""
         self.ai_provider = db_settings.ai_provider or "ollama"
         self.ai_model = db_settings.ai_model or "gemini-3-flash-preview:latest"
         self.ai_api_key = db_settings.ai_api_key or ""
@@ -108,11 +124,23 @@ def get_diagnostics() -> dict:
     else:
         database_path = db_url
     from .log_buffer import get_log_file_path
+    gh_pub = bool(
+        (env_settings.github_oauth_client_id or "").strip()
+        and (env_settings.github_oauth_client_secret or "").strip()
+    )
+    gl_pub = bool(
+        (env_settings.gitlab_oauth_client_id or "").strip()
+        and (env_settings.gitlab_oauth_client_secret or "").strip()
+    )
+    bridge = bool((env_settings.pr_review_oauth_bridge_url or "").strip())
     return {
         "database_path": database_path,
         "app_data_dir": env_settings.pr_review_app_data_dir or "(default / current directory)",
         "log_file_path": os.path.abspath(get_log_file_path()),
         "cwd": os.getcwd(),
+        "bundled_github_oauth_configured": gh_pub,
+        "bundled_gitlab_oauth_configured": gl_pub,
+        "oauth_bridge_url_configured": bridge,
     }
 
 

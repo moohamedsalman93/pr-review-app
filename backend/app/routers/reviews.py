@@ -119,7 +119,7 @@ async def process_review(review_id: int, pr_url: str, db: Session, extended: boo
         # Save suggestions to DB
         new_count = 0
         for sugg in suggestions:
-            key = f"{sugg.file_path}:{sugg.line_start}:{sugg.line_end}:{sugg.suggestion[:50]}"
+            key = f"{sugg.file_path}:{sugg.line_start}:{sugg.line_end}:{s.suggestion[:50]}"
             if key in existing_keys:
                 continue
                 

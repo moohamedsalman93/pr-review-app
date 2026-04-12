@@ -13,6 +13,10 @@ class AppSettings(Base):
     github_token = Column(Text, default="")
     github_client_id = Column(String(200), default="")
     github_client_secret = Column(Text, default="")
+    github_refresh_token = Column(Text, default="")
+    gitlab_client_id = Column(String(200), default="")
+    gitlab_client_secret = Column(Text, default="")
+    gitlab_refresh_token = Column(Text, default="")
     
     # AI settings
     ai_provider = Column(String(50), default="ollama") # ollama, openai, anthropic, gemini, etc.

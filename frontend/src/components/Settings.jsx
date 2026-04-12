@@ -1,6 +1,43 @@
-import React, { useState, useEffect,useCallback  } from 'react';
-import { Settings as SettingsIcon, Save,RefreshCw, Loader2, CheckCircle, AlertCircle, Shield, Github, GitBranch, Cpu } from 'lucide-react';
-import { settingsService } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Settings as SettingsIcon, Save, RefreshCw, Loader2, CheckCircle, AlertCircle, Github, GitBranch, Cpu, Link2 } from 'lucide-react';
+import { settingsService, oauthService } from '../services/api';
+import { openExternalLink } from '../utils/link';
+
+const GITHUB_OAUTH_CALLBACK = 'http://127.0.0.1:47685/api/oauth/github/callback';
+const GITLAB_OAUTH_CALLBACK = 'http://127.0.0.1:47685/api/oauth/gitlab/callback';
+
+async function pollOAuthStatus(pollFn, { intervalMs = 1000, maxAttempts = 120 } = {}) {
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            const row = await pollFn();
+            if (row.status === 'success' || row.status === 'error') {
+                return row;
+            }
+        } catch {
+            return { status: 'error', message: 'Lost connection to the backend (poll failed). Try again.' };
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return { status: 'error', message: 'Timed out waiting for authorization. Close the browser tab and try again.' };
+}
+
+function buildSettingsPayload(s) {
+    return {
+        gitlab_url: s.gitlab_url,
+        gitlab_token: s.gitlab_token,
+        github_token: s.github_token,
+        github_client_id: s.github_client_id,
+        github_client_secret: s.github_client_secret,
+        gitlab_client_id: s.gitlab_client_id,
+        gitlab_client_secret: s.gitlab_client_secret,
+        ai_provider: s.ai_provider,
+        ai_model: s.ai_model,
+        ai_api_key: s.ai_api_key,
+        ai_base_url: s.ai_base_url,
+        max_tokens: s.max_tokens,
+        review_runs: s.review_runs,
+    };
+}
 
 const SectionHeader = ({ icon: Icon, title, description }) => (
     <div className="mb-5">
@@ -72,12 +109,24 @@ const Settings = () => {
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState(null);
     const [availableModels, setAvailableModels] = useState([]);
+    const [oauthGithubBusy, setOauthGithubBusy] = useState(false);
+    const [oauthGitlabBusy, setOauthGitlabBusy] = useState(false);
     const [settings, setSettings] = useState({
         gitlab_url: 'https://gitlab.com',
         gitlab_token: '',
         github_token: '',
         github_client_id: '',
         github_client_secret: '',
+        gitlab_client_id: '',
+        gitlab_client_secret: '',
+        github_token_configured: false,
+        gitlab_token_configured: false,
+        github_client_secret_set: false,
+        gitlab_client_secret_set: false,
+        github_oauth_ready: false,
+        gitlab_oauth_ready: false,
+        github_publisher_oauth: false,
+        gitlab_publisher_oauth: false,
         ai_provider: 'ollama',
         ai_model: 'gemini-1.5-flash-latest',
         ai_api_key: '',
@@ -127,7 +176,8 @@ const Settings = () => {
         setError(null);
 
         try {
-            await settingsService.updateSettings(settings);
+            const updated = await settingsService.updateSettings(buildSettingsPayload(settings));
+            setSettings((prev) => ({ ...prev, ...updated }));
             setSuccess(true);
             setTimeout(() => setSuccess(false), 3000);
         } catch (err) {
@@ -143,6 +193,63 @@ const Settings = () => {
         const numericFields = new Set(['max_tokens', 'review_runs']);
         const nextValue = numericFields.has(field) ? Number(raw) : raw;
         setSettings(prev => ({ ...prev, [field]: nextValue }));
+    };
+
+    const formatOAuthError = (err) => {
+        const d = err.response?.data?.detail;
+        if (typeof d === 'string') return d;
+        if (Array.isArray(d)) return d.map((x) => x.msg || x).join('; ');
+        return err.message || 'OAuth request failed.';
+    };
+
+    const connectGithubOAuth = async () => {
+        setOauthGithubBusy(true);
+        setError(null);
+        try {
+            await settingsService.updateSettings(buildSettingsPayload(settings));
+            const synced = await settingsService.getSettings();
+            setSettings((prev) => ({ ...prev, ...synced }));
+            const { authorize_url, state } = await oauthService.startGithub();
+            await openExternalLink(authorize_url);
+            const result = await pollOAuthStatus(() => oauthService.pollGithub(state));
+            if (result.status === 'success') {
+                const data = await settingsService.getSettings();
+                setSettings((prev) => ({ ...prev, ...data }));
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
+            } else {
+                setError(result.message || 'GitHub authorization failed.');
+            }
+        } catch (err) {
+            setError(formatOAuthError(err));
+        } finally {
+            setOauthGithubBusy(false);
+        }
+    };
+
+    const connectGitlabOAuth = async () => {
+        setOauthGitlabBusy(true);
+        setError(null);
+        try {
+            await settingsService.updateSettings(buildSettingsPayload(settings));
+            const synced = await settingsService.getSettings();
+            setSettings((prev) => ({ ...prev, ...synced }));
+            const { authorize_url, state } = await oauthService.startGitlab();
+            await openExternalLink(authorize_url);
+            const result = await pollOAuthStatus(() => oauthService.pollGitlab(state));
+            if (result.status === 'success') {
+                const data = await settingsService.getSettings();
+                setSettings((prev) => ({ ...prev, ...data }));
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
+            } else {
+                setError(result.message || 'GitLab authorization failed.');
+            }
+        } catch (err) {
+            setError(formatOAuthError(err));
+        } finally {
+            setOauthGitlabBusy(false);
+        }
     };
 
     if (loading) {
@@ -218,17 +325,67 @@ const Settings = () => {
                                         value={settings.gitlab_url}
                                         onChange={handleChange('gitlab_url')}
                                         placeholder="https://gitlab.com"
-                                        helpText="Default is gitlab.com"
+                                        helpText="Must match the instance where you registered the OAuth application."
                                     />
                                     <InputField
-                                        label="Personal Access Token"
+                                        label="Personal Access Token (optional)"
                                         id="gitlab_token"
                                         type="password"
                                         value={settings.gitlab_token}
                                         onChange={handleChange('gitlab_token')}
-                                        placeholder="glpat-..."
-                                        helpText="Token must have 'api' scope"
+                                        placeholder={settings.gitlab_token_configured ? 'Saved token on file — paste to replace' : 'glpat-...'}
+                                        helpText="Or use Connect with GitLab below. Scope read_api matches OAuth; use api for broader access."
                                     />
+                                </div>
+                                <div className="mt-6 p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 space-y-4">
+                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Sign in with GitLab</p>
+                                    {settings.gitlab_publisher_oauth && (
+                                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                                            This build includes GitLab.com OAuth—you only need to click Connect (GitLab URL must stay <span className="font-mono">https://gitlab.com</span> unless your publisher configured another instance).
+                                        </p>
+                                    )}
+                                    {!settings.gitlab_oauth_ready && (
+                                        <p className="text-[10px] text-amber-700 dark:text-amber-400/90 leading-relaxed">
+                                            OAuth is not available yet. Use a personal access token above, or open &quot;Custom OAuth application&quot; below to register your own app. Self-hosted GitLab always needs your own application.
+                                        </p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={connectGitlabOAuth}
+                                        disabled={oauthGitlabBusy || !settings.gitlab_oauth_ready || !settings.gitlab_url?.trim()}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+                                    >
+                                        {oauthGitlabBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                                        {oauthGitlabBusy ? 'Waiting for browser…' : 'Connect with GitLab'}
+                                    </button>
+                                    <details className="group border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                                        <summary className="text-[11px] font-bold text-slate-600 dark:text-slate-400 cursor-pointer list-none flex items-center gap-2">
+                                            <span className="select-none">Custom OAuth application (optional)</span>
+                                        </summary>
+                                        <div className="mt-4 space-y-4">
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                                On your GitLab instance, create an OAuth application and set this redirect URI (exactly):
+                                                <code className="block mt-1 p-2 rounded bg-slate-100 dark:bg-slate-900 text-[10px] break-all font-mono text-slate-800 dark:text-slate-200">{GITLAB_OAUTH_CALLBACK}</code>
+                                            </p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <InputField
+                                                    label="Application ID"
+                                                    id="gitlab_client_id"
+                                                    value={settings.gitlab_client_id}
+                                                    onChange={handleChange('gitlab_client_id')}
+                                                    placeholder="OAuth application ID"
+                                                />
+                                                <InputField
+                                                    label="Application Secret"
+                                                    id="gitlab_client_secret"
+                                                    type="password"
+                                                    value={settings.gitlab_client_secret}
+                                                    onChange={handleChange('gitlab_client_secret')}
+                                                    placeholder={settings.gitlab_client_secret_set ? 'Unchanged if left blank — paste to replace' : 'Secret'}
+                                                />
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
                             </section>
                         )}
@@ -243,30 +400,64 @@ const Settings = () => {
                                 />
                             <div className="space-y-5">
                                     <InputField
-                                        label="Personal Access Token"
+                                        label="Personal Access Token (optional)"
                                         id="github_token"
                                         type="password"
                                         value={settings.github_token}
                                         onChange={handleChange('github_token')}
-                                        placeholder="ghp_..."
-                                        helpText="Token with 'repo' and 'read:org' permissions"
+                                        placeholder={settings.github_token_configured ? 'Saved token on file — paste to replace' : 'ghp_...'}
+                                        helpText="Or use Connect with GitHub below. Needs repo (and read:org if applicable)."
                                     />
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <InputField
-                                            label="OAuth Client ID (Optional)"
-                                            id="github_client_id"
-                                            value={settings.github_client_id}
-                                            onChange={handleChange('github_client_id')}
-                                            placeholder="OAuth ID"
-                                        />
-                                        <InputField
-                                            label="OAuth Client Secret (Optional)"
-                                            id="github_client_secret"
-                                            value={settings.github_client_secret}
-                                            onChange={handleChange('github_client_secret')}
-                                            placeholder="OAuth Secret"
-                                        />
-                                    </div>
+                                <div className="p-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 space-y-4">
+                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Sign in with GitHub</p>
+                                    {settings.github_publisher_oauth && (
+                                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                                            This build can use GitHub OAuth without pasting a Client ID or Secret (bundled credentials or a hosted bridge configured by the publisher).
+                                        </p>
+                                    )}
+                                    {!settings.github_oauth_ready && (
+                                        <p className="text-[10px] text-amber-700 dark:text-amber-400/90 leading-relaxed">
+                                            OAuth is not configured. Use a personal access token above, ask your app publisher to ship backend environment variables, or open &quot;Custom OAuth app&quot; below to add your own GitHub OAuth application.
+                                        </p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={connectGithubOAuth}
+                                        disabled={oauthGithubBusy || !settings.github_oauth_ready}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+                                    >
+                                        {oauthGithubBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                                        {oauthGithubBusy ? 'Waiting for browser…' : 'Connect with GitHub'}
+                                    </button>
+                                    <details className="group border-t border-slate-200 dark:border-slate-700 pt-4 mt-2">
+                                        <summary className="text-[11px] font-bold text-slate-600 dark:text-slate-400 cursor-pointer list-none flex items-center gap-2">
+                                            <span className="select-none">Custom OAuth app (optional)</span>
+                                        </summary>
+                                        <div className="mt-4 space-y-4">
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                                Create a GitHub OAuth App and set this authorization callback URL (exactly):
+                                                <code className="block mt-1 p-2 rounded bg-slate-100 dark:bg-slate-900 text-[10px] break-all font-mono text-slate-800 dark:text-slate-200">{GITHUB_OAUTH_CALLBACK}</code>
+                                            </p>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <InputField
+                                                    label="Client ID"
+                                                    id="github_client_id"
+                                                    value={settings.github_client_id}
+                                                    onChange={handleChange('github_client_id')}
+                                                    placeholder="Iv1.…"
+                                                />
+                                                <InputField
+                                                    label="Client Secret"
+                                                    id="github_client_secret"
+                                                    type="password"
+                                                    value={settings.github_client_secret}
+                                                    onChange={handleChange('github_client_secret')}
+                                                    placeholder={settings.github_client_secret_set ? 'Unchanged if left blank — paste to replace' : 'Secret'}
+                                                />
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
                                 </div>
                             </section>
                         )}

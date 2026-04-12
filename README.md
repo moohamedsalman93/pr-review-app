@@ -164,14 +164,36 @@ Launch the app (see [Ways to Run](#-ways-to-run)), then navigate to **Settings**
 
 | Setting          | Description                                                       |
 | ---------------- | ----------------------------------------------------------------- |
-| **GitHub Token** | Personal Access Token with `repo` scope                           |
-| **GitLab Token** | Personal Access Token with `read_api` scope                       |
-| **GitLab URL**   | Self-hosted GitLab URL (defaults to `https://gitlab.com`)         |
+| **GitHub**       | Optional **PAT** (`repo`), or **Connect with GitHub** (OAuth). Distributors can set `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` on the backend so users need not paste app credentials. |
+| **GitLab**       | Optional **PAT**, or **Connect with GitLab**. Distributors can set `GITLAB_OAUTH_CLIENT_ID` / `GITLAB_OAUTH_CLIENT_SECRET` for **GitLab.com** (or set `GITLAB_OAUTH_INSTANCE_URL` to match another single instance). |
+| **GitLab URL**   | Self-hosted GitLab URL (defaults to `https://gitlab.com`); must match the instance where you create the OAuth app. |
 | **AI Provider**  | `ollama`, `openai`, `anthropic`, `gemini`, etc.                   |
 | **AI Model**     | Model name (e.g., `gemini-3-flash-preview:latest`, `gpt-4o`)      |
 | **AI API Key**   | Provider API key (not needed for Ollama)                          |
 | **AI Base URL**  | Custom endpoint (defaults to `http://localhost:11434` for Ollama) |
 | **Max Tokens**   | Context window size (default: `128000`)                           |
+
+**OAuth redirect URLs** (register these exactly on the provider):
+
+- GitHub OAuth App — Authorization callback URL: `http://127.0.0.1:47685/api/oauth/github/callback`
+- GitLab OAuth application — Redirect URI: `http://127.0.0.1:47685/api/oauth/gitlab/callback`
+
+The app backend must be running on port **47685** when you complete the browser login (default for the bundled sidecar and for `npm run tauri` with sidecar).
+
+**Bundled OAuth (for app publishers / custom builds):** Set these on the **Python backend process** (e.g. in `backend/.env`, or the environment of `PR-Review-Agent` / `uvicorn`). They are never returned to the frontend.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth App Client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth App Client Secret |
+| `GITLAB_OAUTH_CLIENT_ID` | GitLab OAuth Application ID |
+| `GITLAB_OAUTH_CLIENT_SECRET` | GitLab OAuth Application Secret |
+| `GITLAB_OAUTH_INSTANCE_URL` | Optional. Origin where bundled GitLab OAuth applies (default `https://gitlab.com`). User **GitLab URL** must match this origin to use bundled GitLab credentials. |
+| `PR_REVIEW_OAUTH_BRIDGE_URL` | Optional. HTTPS base URL of the hosted **[oauth-bridge](oauth-bridge/)** service. When set, GitHub **Connect** uses the bridge so **`GITHUB_OAUTH_CLIENT_SECRET` does not need to ship** with the desktop app. Register GitHub’s callback as `https://<bridge-host>/github/callback`. |
+
+**Hosted GitHub OAuth bridge:** Deploy the small app in [`oauth-bridge/`](oauth-bridge/) (free-tier options: Render, Fly.io—see [`oauth-bridge/README.md`](oauth-bridge/README.md)). Put `GITHUB_OAUTH_CLIENT_*` and `PUBLIC_BASE_URL` only on that server; set `PR_REVIEW_OAUTH_BRIDGE_URL` on the PR Review backend.
+
+Self-hosted GitLab users who are not on that instance still register their own OAuth app under **Custom OAuth application** in Settings.
 
 > [!TIP] > **Recommended Setup**: Use **Ollama** for fully local/private analysis, or **Gemini Flash** for fast cloud-based reviews.
 

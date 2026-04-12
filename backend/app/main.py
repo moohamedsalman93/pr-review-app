@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_diagnostics
 from .database import engine, Base
 from . import models  # Explicitly import models to ensure they are registered with Base.metadata
-from .routers import reviews_router, settings_router, rule_sets_router
+from .routers import reviews_router, settings_router, rule_sets_router, oauth_router
 from .log_buffer import install_buffer_handler, get_recent_logs
 from sqlalchemy import text
 
@@ -25,6 +25,10 @@ Base.metadata.create_all(bind=engine)
 
 # Ensure newly-added settings columns exist for existing DBs.
 _sqlite_ensure_column("app_settings", "review_runs", "review_runs INTEGER DEFAULT 1")
+_sqlite_ensure_column("app_settings", "github_refresh_token", "github_refresh_token TEXT DEFAULT ''")
+_sqlite_ensure_column("app_settings", "gitlab_client_id", "gitlab_client_id VARCHAR(200) DEFAULT ''")
+_sqlite_ensure_column("app_settings", "gitlab_client_secret", "gitlab_client_secret TEXT DEFAULT ''")
+_sqlite_ensure_column("app_settings", "gitlab_refresh_token", "gitlab_refresh_token TEXT DEFAULT ''")
 
 app = FastAPI(
     title="PR Review API",
@@ -45,6 +49,7 @@ app.add_middleware(
 app.include_router(reviews_router)
 app.include_router(settings_router)
 app.include_router(rule_sets_router)
+app.include_router(oauth_router)
 
 
 @app.get("/api/health")
