@@ -44,13 +44,25 @@ export const reviewService = {
   },
 
   // Chat with PR
-  chatWithPR: async (id, question, signal = null) => {
+  chatWithPR: async (id, question, displayQuestion, signal = null) => {
     const config = signal ? { signal } : {};
     const response = await api.post(
       `/reviews/ask`,
-      { question, review_id: id },
+      { question, review_id: id, display_question: displayQuestion ?? question },
       config
     );
+    return response.data;
+  },
+
+  // Get persisted chat history for a review
+  getChatHistory: async (id, limit = 200) => {
+    const response = await api.get(`/reviews/${id}/chat`, { params: { limit } });
+    return response.data;
+  },
+
+  // Clear persisted chat history for a review
+  clearChatHistory: async (id) => {
+    const response = await api.delete(`/reviews/${id}/chat`);
     return response.data;
   },
 };
