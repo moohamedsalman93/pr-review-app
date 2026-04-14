@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
 # Keep last 500 log entries in memory
@@ -16,7 +16,9 @@ class BufferHandler(logging.Handler):
         try:
             msg = self.format(record)
             _log_buffer.append({
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                # Emit an ISO-8601, timezone-aware UTC timestamp so the UI can
+                # reliably render it in local time.
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": record.levelname.lower(),
                 "message": msg,
                 "logger": record.name,

@@ -6,7 +6,9 @@ from .pr_review import (
     SuggestionCreate,
     SuggestionResponse,
     ChatRequest,
-    ChatResponse
+    ChatResponse,
+    ChatMessageResponse,
+    ChatHistoryResponse,
 )
 from .rule_set import (
     RuleSetCreate,

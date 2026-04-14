@@ -13,6 +13,7 @@ const ChatDrawer = ({ isOpen, onClose, reviewId, prTitle, activeSuggestion, onCl
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
+    const lastLoadedReviewIdRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -21,6 +22,34 @@ const ChatDrawer = ({ isOpen, onClose, reviewId, prTitle, activeSuggestion, onCl
     useEffect(() => {
         scrollToBottom();
     }, [messages, isLoading]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            lastLoadedReviewIdRef.current = null;
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        const load = async () => {
+            if (!isOpen || !reviewId) return;
+            if (lastLoadedReviewIdRef.current === reviewId) return;
+            lastLoadedReviewIdRef.current = reviewId;
+
+            try {
+                const data = await reviewService.getChatHistory(reviewId);
+                const items = (data?.items || []).map((m) => ({
+                    text: m.content,
+                    isBot: m.role === 'assistant',
+                    timestamp: m.created_at ? new Date(m.created_at) : new Date(),
+                }));
+                setMessages(items);
+            } catch (e) {
+                console.error('Failed to load chat history:', e);
+                setMessages([]);
+            }
+        };
+        load();
+    }, [isOpen, reviewId]);
 
     const buildContextFromSuggestion = () => {
         if (!activeSuggestion) return '';
@@ -58,7 +87,17 @@ const ChatDrawer = ({ isOpen, onClose, reviewId, prTitle, activeSuggestion, onCl
         if (isLoading) {
             handleCancel();
         }
-        setMessages([]);
+        if (!reviewId) {
+            setMessages([]);
+            return;
+        }
+        reviewService
+            .clearChatHistory(reviewId)
+            .catch((e) => console.error('Failed to clear chat history:', e))
+            .finally(() => {
+                lastLoadedReviewIdRef.current = null;
+                setMessages([]);
+            });
     };
 
     const handleSend = async (e) => {
@@ -82,7 +121,12 @@ const ChatDrawer = ({ isOpen, onClose, reviewId, prTitle, activeSuggestion, onCl
 
         try {
             // Send the full question with context to the API
-            const response = await reviewService.chatWithPR(reviewId, finalQuestion, abortControllerRef.current.signal);
+            const response = await reviewService.chatWithPR(
+                reviewId,
+                finalQuestion,
+                userInput,
+                abortControllerRef.current.signal
+            );
             const botMessage = { text: response.answer, isBot: true, timestamp: new Date() };
             setMessages(prev => [...prev, botMessage]);
         } catch (error) {

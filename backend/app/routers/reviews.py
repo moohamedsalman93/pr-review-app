@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from ..database import get_db
-from ..models import PRReview, Suggestion, ReviewStatus, ReviewRuleSet
+from ..models import PRReview, Suggestion, ReviewStatus, ReviewRuleSet, PRChatMessage, ChatRole
 from ..schemas import (
     PRReviewCreate, 
     PRReviewResponse, 
     PRReviewDetailResponse,
     PRReviewListResponse,
     ChatRequest,
-    ChatResponse
+    ChatResponse,
+    ChatHistoryResponse,
 )
 from ..services import get_provider_service, detect_provider, ProviderType
 from ..services.pr_agent_service import PRAgentService
@@ -392,6 +393,13 @@ async def chat_with_pr(
     try:
         # Run chat with cancellation support
         answer = await pr_agent_service.chat_with_pr(review.pr_url, chat_data.question, request)
+
+        # Persist the conversation (per review) so it survives restarts.
+        display_question = (chat_data.display_question or chat_data.question).strip()
+        if display_question:
+            db.add(PRChatMessage(review_id=review.id, role=ChatRole.USER.value, content=display_question))
+        db.add(PRChatMessage(review_id=review.id, role=ChatRole.ASSISTANT.value, content=answer))
+        db.commit()
         return ChatResponse(answer=answer)
     except asyncio.CancelledError:
         logger.info(f"Chat request cancelled for review {chat_data.review_id}")
@@ -405,3 +413,41 @@ async def chat_with_pr(
             raise HTTPException(status_code=499, detail="Request cancelled")
         logger.error(f"Error in chat_with_pr: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{review_id}/chat", response_model=ChatHistoryResponse)
+def get_chat_history(
+    review_id: int,
+    limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    """
+    Get persisted chat messages for a review (oldest first).
+    """
+    review = db.query(PRReview).filter(PRReview.id == review_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    limit = min(max(1, limit), 2000)
+    items = (
+        db.query(PRChatMessage)
+        .filter(PRChatMessage.review_id == review_id)
+        .order_by(PRChatMessage.created_at.asc(), PRChatMessage.id.asc())
+        .limit(limit)
+        .all()
+    )
+    return ChatHistoryResponse(items=items)
+
+
+@router.delete("/{review_id}/chat")
+def clear_chat_history(review_id: int, db: Session = Depends(get_db)):
+    """
+    Clear persisted chat for a review. This is the only way chat is removed.
+    """
+    review = db.query(PRReview).filter(PRReview.id == review_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+
+    db.query(PRChatMessage).filter(PRChatMessage.review_id == review_id).delete(synchronize_session=False)
+    db.commit()
+    return {"message": "Chat cleared"}

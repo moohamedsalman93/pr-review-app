@@ -83,7 +83,23 @@ class PRReviewListResponse(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     review_id: int
+    display_question: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
+
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    review_id: int
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatHistoryResponse(BaseModel):
+    items: List[ChatMessageResponse]

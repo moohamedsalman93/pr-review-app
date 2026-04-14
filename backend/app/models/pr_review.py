@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, JSON
 from sqlalchemy.orm import relationship
 from ..database import Base
@@ -60,8 +60,12 @@ class PRReview(Base):
     rule_set_id = Column(Integer, ForeignKey("review_rule_sets.id"), nullable=True)
     rule_set = relationship("ReviewRuleSet")
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     
     def add_log(self, message: str, level: str = "info", db=None):
         """Add a log entry to processing_logs"""
@@ -71,7 +75,7 @@ class PRReview(Base):
         # Create a new list copy so SQLAlchemy detects the change to the JSON column
         updated_logs = list(self.processing_logs)
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": level,
             "message": message
         }
@@ -82,6 +86,12 @@ class PRReview(Base):
         # We don't commit here to allow multiple logs to be added before committing
 
     suggestions = relationship("Suggestion", back_populates="review", cascade="all, delete-orphan")
+    chat_messages = relationship(
+        "PRChatMessage",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        order_by="PRChatMessage.created_at.asc()",
+    )
 
 
 class Suggestion(Base):
@@ -100,6 +110,23 @@ class Suggestion(Base):
     explanation = Column(Text, nullable=True)
     score = Column(Integer, nullable=True)
     score_why = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     review = relationship("PRReview", back_populates="suggestions")
+
+
+class ChatRole(str, enum.Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class PRChatMessage(Base):
+    __tablename__ = "pr_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    review_id = Column(Integer, ForeignKey("pr_reviews.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+    review = relationship("PRReview", back_populates="chat_messages")
