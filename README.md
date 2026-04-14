@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/moohamedsalman93/pr-review-app/releases/latest"><img src="https://img.shields.io/github/v/release/moohamedsalman93/pr-review-app?style=flat-square&label=Latest%20Release&color=blue" alt="Latest Release" /></a>
   <a href="https://github.com/moohamedsalman93/pr-review-app/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
-  <img src="https://img.shields.io/badge/Platform-Windows-lightgrey?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20arm64-lightgrey?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/Powered_by-Qodo_PR--Agent-purple?style=flat-square" alt="Powered by Qodo" />
 </p>
 
@@ -232,11 +232,10 @@ The app detects the missing sidecar and connects to your manually-started backen
 
 ### 3. Standalone Production App
 
-After building, the application runs as a native Windows executable with the Python backend bundled inside.
+After building, the application runs as a native desktop app with the Python backend bundled inside.
 
-```
-frontend/src-tauri/target/release/PR-Review-Agent.exe
-```
+- **Windows**: `frontend/src-tauri/target/release/PR-Review-Agent.exe`
+- **macOS arm64**: `frontend/src-tauri/target/release/bundle/macos/PR Review Agent.app`
 
 ### 4. Backend Only (API Debugging)
 
@@ -306,7 +305,7 @@ Output: `frontend/src-tauri/target/release/bundle/`
 
 ### Automated Build & Release
 
-The project includes a release script that builds, signs, and publishes to GitHub Releases:
+The project includes a release script that builds, signs, and publishes to GitHub Releases for Windows and macOS arm64:
 
 ```bash
 cd frontend
@@ -315,13 +314,35 @@ npm run release
 
 **Required environment variables:**
 
-| Variable                             | Description                                                   |
-| ------------------------------------ | ------------------------------------------------------------- |
-| `GITHUB_TOKEN`                       | GitHub PAT with `repo` scope (for publishing releases)        |
-| `TAURI_SIGNING_PRIVATE_KEY_PATH`     | Path to the minisign private key file (for update signatures) |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the private key                                  |
+| Variable | Description |
+| --- | --- |
+| `GITHUB_TOKEN` | GitHub PAT with `repo` scope (for publishing releases) |
+| `TAURI_SIGNING_PRIVATE_KEY` | Path to minisign private key file (used to sign updater artifacts) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for minisign private key (if encrypted) |
+| `TAURI_SIGNING_PUBLIC_KEY` | Optional updater public key override injected during build |
+| `TAURI_UPDATE_ENDPOINT` | Optional updater endpoint override injected during build |
+
+**Additional required variables for signed + notarized macOS production builds:**
+
+Use one of the two supported notarization auth methods:
+
+| Variable | Description |
+| --- | --- |
+| `APPLE_API_KEY` | App Store Connect API key ID |
+| `APPLE_API_ISSUER` | App Store Connect issuer UUID |
+| `APPLE_API_KEY_PATH` | Path to `.p8` private key file |
+| `APPLE_API_KEY_CONTENT` | Alternative to `APPLE_API_KEY_PATH`: raw `.p8` contents (release script writes a temporary key file) |
+
+or:
+
+| Variable | Description |
+| --- | --- |
+| `APPLE_ID` | Apple account email |
+| `APPLE_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
 
 The script supports selective steps via flags: `--backend`, `--tauri`, `--publish`, or `--all`.
+When macOS artifacts are present and signed, release upload now includes `.dmg`, `.app.tar.gz`, platform signatures, and a multi-platform `latest.json` containing both Windows and macOS arm64 updater entries.
 
 ---
 

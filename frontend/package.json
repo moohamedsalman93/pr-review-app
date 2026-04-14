@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "build:backend": "cd ../backend && python build_sidecar.py",
     "tauri": "npm run build:backend && tauri dev",
-    "tauri:nosidecar": "set TAURI_NO_SIDECAR=1&& tauri dev -c src-tauri/tauri.nosidecar.conf.json",
+    "tauri:nosidecar": "cross-env TAURI_NO_SIDECAR=1 tauri dev -c src-tauri/tauri.nosidecar.conf.json",
     "tauri:build": "npm run build && npm run build:backend && tauri build",
     "release": "node scripts/build-and-release.js"
   },
@@ -43,6 +43,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",
+    "cross-env": "^10.1.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
