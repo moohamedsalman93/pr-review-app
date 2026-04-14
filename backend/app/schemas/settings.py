@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
 from datetime import datetime
 
 
@@ -17,6 +17,7 @@ class SettingsBase(BaseModel):
     ai_model: str = "qwen3:8b"
     ai_api_key: str = ""
     ai_base_url: str = "http://localhost:11434"
+    llm_provider_configs: Dict[str, Dict[str, str]] = Field(default_factory=dict)
     max_tokens: int = 128000
     review_runs: int = 1
 

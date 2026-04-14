@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,19 @@ def settings_to_response(settings: AppSettings) -> SettingsResponse:
     """API-safe view: never expose PATs or OAuth client secrets."""
     gh_secret = (settings.github_client_secret or "").strip()
     gl_secret = (settings.gitlab_client_secret or "").strip()
+    provider_configs = _parse_provider_configs(getattr(settings, "llm_provider_configs", None))
+    active_provider = settings.ai_provider or "ollama"
+    active_config = provider_configs.get(
+        active_provider,
+        _normalize_provider_config(
+            active_provider,
+            {
+                "ai_model": settings.ai_model or "gemini-3-flash-preview:latest",
+                "ai_api_key": settings.ai_api_key or "",
+                "ai_base_url": settings.ai_base_url or "",
+            },
+        ),
+    )
     return SettingsResponse(
         id=settings.id,
         updated_at=settings.updated_at,
@@ -31,10 +45,11 @@ def settings_to_response(settings: AppSettings) -> SettingsResponse:
         github_client_secret="",
         gitlab_client_id=getattr(settings, "gitlab_client_id", None) or "",
         gitlab_client_secret="",
-        ai_provider=settings.ai_provider or "ollama",
-        ai_model=settings.ai_model or "gemini-3-flash-preview:latest",
-        ai_api_key=settings.ai_api_key or "",
-        ai_base_url=settings.ai_base_url or "http://localhost:11434",
+        ai_provider=active_provider,
+        ai_model=active_config.get("ai_model") or settings.ai_model or "gemini-3-flash-preview:latest",
+        ai_api_key=active_config.get("ai_api_key") or "",
+        ai_base_url=active_config.get("ai_base_url") or settings.ai_base_url or "http://localhost:11434",
+        llm_provider_configs=provider_configs,
         max_tokens=settings.max_tokens or 128000,
         review_runs=getattr(settings, "review_runs", None) or 1,
         github_token_configured=bool((settings.github_token or "").strip()),
@@ -49,6 +64,49 @@ def settings_to_response(settings: AppSettings) -> SettingsResponse:
 
 OLLAMA_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434"
 OLLAMA_CLOUD_DEFAULT_BASE_URL = "https://ollama.com"
+
+
+def _default_provider_config(provider: str) -> dict[str, str]:
+    if provider == "ollama_cloud":
+        return {"ai_model": "", "ai_api_key": "", "ai_base_url": OLLAMA_CLOUD_DEFAULT_BASE_URL}
+    if provider == "ollama":
+        return {"ai_model": "", "ai_api_key": "", "ai_base_url": OLLAMA_LOCAL_DEFAULT_BASE_URL}
+    return {"ai_model": "", "ai_api_key": "", "ai_base_url": ""}
+
+
+def _normalize_provider_config(provider: str, config: dict | None) -> dict[str, str]:
+    base = _default_provider_config(provider)
+    incoming = config if isinstance(config, dict) else {}
+    out = {
+        "ai_model": str(incoming.get("ai_model", base["ai_model"]) or ""),
+        "ai_api_key": str(incoming.get("ai_api_key", base["ai_api_key"]) or ""),
+        "ai_base_url": str(incoming.get("ai_base_url", base["ai_base_url"]) or ""),
+    }
+    if provider == "ollama_cloud":
+        out["ai_base_url"] = OLLAMA_CLOUD_DEFAULT_BASE_URL
+    elif provider == "ollama" and not out["ai_base_url"].strip():
+        out["ai_base_url"] = OLLAMA_LOCAL_DEFAULT_BASE_URL
+    return out
+
+
+def _parse_provider_configs(raw: str | None) -> dict[str, dict[str, str]]:
+    if not raw:
+        return {}
+    try:
+        decoded = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(decoded, dict):
+        return {}
+
+    out: dict[str, dict[str, str]] = {}
+    for provider in ["ollama_cloud", "ollama", "gemini", "openai", "anthropic"]:
+        out[provider] = _normalize_provider_config(provider, decoded.get(provider))
+    return out
+
+
+def _encode_provider_configs(configs: dict[str, dict[str, str]]) -> str:
+    return json.dumps(configs, separators=(",", ":"))
 
 
 def get_or_create_settings(db: Session) -> AppSettings:
@@ -70,6 +128,19 @@ def get_or_create_settings(db: Session) -> AppSettings:
         updated = True
     if settings.ai_api_key is None:
         settings.ai_api_key = ""
+        updated = True
+    provider_configs = _parse_provider_configs(getattr(settings, "llm_provider_configs", None))
+    current_provider = settings.ai_provider or "ollama"
+    if current_provider not in provider_configs:
+        provider_configs[current_provider] = _normalize_provider_config(
+            current_provider,
+            {
+                "ai_model": settings.ai_model or "",
+                "ai_api_key": settings.ai_api_key or "",
+                "ai_base_url": settings.ai_base_url or "",
+            },
+        )
+        settings.llm_provider_configs = _encode_provider_configs(provider_configs)
         updated = True
     # Base URL depends on provider; also fix up legacy empty/incorrect values.
     current_base = (settings.ai_base_url or "").strip()
@@ -191,17 +262,25 @@ def update_settings(
     
     # Update AI settings
     settings.ai_provider = settings_data.ai_provider
-    settings.ai_model = settings_data.ai_model
-    settings.ai_api_key = settings_data.ai_api_key
-    # Normalize base URL defaults for Ollama variants.
-    incoming_base = (settings_data.ai_base_url or "").strip()
-    if settings_data.ai_provider == "ollama_cloud":
-        # Cloud endpoint is fixed; do not allow overriding via API.
-        settings.ai_base_url = OLLAMA_CLOUD_DEFAULT_BASE_URL
-    elif settings_data.ai_provider == "ollama":
-        settings.ai_base_url = incoming_base or OLLAMA_LOCAL_DEFAULT_BASE_URL
-    else:
-        settings.ai_base_url = incoming_base
+    provider_configs = _parse_provider_configs(getattr(settings, "llm_provider_configs", None))
+    incoming_configs = settings_data.llm_provider_configs or {}
+    for provider in ["ollama_cloud", "ollama", "gemini", "openai", "anthropic"]:
+        raw_config = incoming_configs.get(provider, provider_configs.get(provider))
+        provider_configs[provider] = _normalize_provider_config(provider, raw_config)
+
+    # Keep active provider mirrored in legacy ai_* columns for compatibility.
+    active = provider_configs.get(settings_data.ai_provider) or _normalize_provider_config(
+        settings_data.ai_provider,
+        {
+            "ai_model": settings_data.ai_model,
+            "ai_api_key": settings_data.ai_api_key,
+            "ai_base_url": settings_data.ai_base_url,
+        },
+    )
+    settings.ai_model = active["ai_model"] or settings_data.ai_model
+    settings.ai_api_key = active["ai_api_key"]
+    settings.ai_base_url = active["ai_base_url"]
+    settings.llm_provider_configs = _encode_provider_configs(provider_configs)
     settings.max_tokens = settings_data.max_tokens
     settings.review_runs = settings_data.review_runs
 

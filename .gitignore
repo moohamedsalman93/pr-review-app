@@ -17,7 +17,9 @@ frontend/keys_output.txt
 
 # --- Backend (Python/PyInstaller/Poetry) ---
 backend/__pycache__/
+backend/**/__pycache__/
 backend/*.py[cod]
+backend/**/*.py[cod]
 backend/*$py.class
 backend/.Python
 backend/build/
@@ -29,6 +31,7 @@ backend/ENV/
 backend/poetry.lock
 backend/*.db
 backend/*.sqlite
+backend/backend.log
 backend/.env
 oauth-bridge/.env
 backend/tiktoken_cache/

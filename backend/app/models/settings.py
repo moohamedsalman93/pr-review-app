@@ -23,6 +23,7 @@ class AppSettings(Base):
     ai_model = Column(String(200), default="gemini-3-flash-preview:latest")
     ai_api_key = Column(Text, default="")
     ai_base_url = Column(String(500), default="http://localhost:11434")
+    llm_provider_configs = Column(Text, default="{}")
     max_tokens = Column(Integer, default=128000)
     # Number of independent AI review passes to run per PR.
     # Higher values can yield more coverage but increase latency/cost.

@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('app', 'app'), ('tiktoken_cache', 'tiktoken_cache')]
+datas = [('app', 'app')]
+if os.path.isdir('tiktoken_cache'):
+    datas.append(('tiktoken_cache', 'tiktoken_cache'))
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('tiktoken')

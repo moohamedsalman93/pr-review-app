@@ -1,9 +1,39 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, WindowEvent,
 };
 use tauri_plugin_shell::ShellExt;
+
+const BACKEND_PORT: u16 = 47685;
+
+fn is_backend_running() -> bool {
+    std::net::TcpStream::connect(("127.0.0.1", BACKEND_PORT)).is_ok()
+}
+
+/// Kill backend sidecar processes before respawning.
+/// On Windows we terminate the full process tree because onefile bundles can spawn children.
+fn kill_backend_processes() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::{Command, Stdio};
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "PR-Review-Agent.exe", "/T"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::process::{Command, Stdio};
+        let _ = Command::new("pkill")
+            .args(["-f", "PR-Review-Agent"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,6 +44,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
+                kill_backend_processes();
+            }
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -42,6 +77,15 @@ pub fn run() {
             } else {
                 let app_data_dir_str = app_data_dir.to_string_lossy().to_string();
                 tauri::async_runtime::spawn(async move {
+                    if is_backend_running() {
+                        println!(
+                            "Backend already running on port {}. Killing stale processes before respawn...",
+                            BACKEND_PORT
+                        );
+                        kill_backend_processes();
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                    }
+
                     let sidecar_result = handle
                         .shell()
                         .sidecar("PR-Review-Agent")
@@ -99,6 +143,7 @@ pub fn run() {
                         window.set_focus().unwrap();
                     }
                     "quit" => {
+                        kill_backend_processes();
                         app.exit(0);
                     }
                     _ => {}

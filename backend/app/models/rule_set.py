@@ -8,7 +8,7 @@ class ReviewRuleSet(Base):
     __tablename__ = "review_rule_sets"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(200), nullable=False, unique=True)  # e.g., "frontend-digiclass"
+    name = Column(String(200), nullable=False, unique=True)  # e.g., "frontend"
     description = Column(Text, nullable=True)  # Optional description
     instructions = Column(Text, nullable=False)  # The actual rules/instructions for pr-agent
     is_active = Column(Boolean, default=True)  # Soft delete support

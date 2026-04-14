@@ -51,6 +51,7 @@ function buildSettingsPayload(s) {
         ai_model: s.ai_model,
         ai_api_key: s.ai_api_key,
         ai_base_url: s.ai_base_url,
+        llm_provider_configs: s.llm_provider_configs || {},
         max_tokens: s.max_tokens,
         review_runs: s.review_runs,
     };
@@ -137,6 +138,28 @@ const LLM_PROVIDERS = [
     { id: 'openai', label: 'OpenAI', iconSrc: openaiBrand, iconTone: 'mono' },
     { id: 'anthropic', label: 'Anthropic', iconSrc: anthropicBrand, iconTone: 'mono' },
 ];
+
+function getDefaultLlmConfig(provider) {
+    if (provider === 'ollama_cloud') return { ai_model: '', ai_base_url: OLLAMA_CLOUD_BASE_URL, ai_api_key: '' };
+    if (provider === 'ollama') return { ai_model: '', ai_base_url: 'http://localhost:11434', ai_api_key: '' };
+    return { ai_model: '', ai_base_url: '', ai_api_key: '' };
+}
+
+function normalizeLlmConfig(provider, config = {}) {
+    const base = getDefaultLlmConfig(provider);
+    const next = {
+        ai_model: String(config.ai_model ?? base.ai_model),
+        ai_base_url: String(config.ai_base_url ?? base.ai_base_url),
+        ai_api_key: String(config.ai_api_key ?? base.ai_api_key),
+    };
+    if (provider === 'ollama_cloud') next.ai_base_url = OLLAMA_CLOUD_BASE_URL;
+    if (provider === 'ollama' && !next.ai_base_url.trim()) next.ai_base_url = 'http://localhost:11434';
+    return next;
+}
+
+function normalizeProviderConfigs(raw = {}) {
+    return Object.fromEntries(LLM_PROVIDERS.map(({ id }) => [id, normalizeLlmConfig(id, raw[id])]));
+}
 
 function Modal({ title, children, onClose }) {
     useEffect(() => {
@@ -225,6 +248,9 @@ const Settings = () => {
         ai_model: 'gemini-1.5-flash-latest',
         ai_api_key: '',
         ai_base_url: 'http://localhost:11434',
+        llm_provider_configs: normalizeProviderConfigs({
+            ollama: { ai_model: 'gemini-1.5-flash-latest', ai_base_url: 'http://localhost:11434', ai_api_key: '' },
+        }),
         max_tokens: 128000,
         review_runs: 1,
     });
@@ -249,7 +275,22 @@ const Settings = () => {
     const loadSettings = async () => {
         try {
             const [data, info] = await Promise.all([settingsService.getSettings(), appInfoService.getInfo().catch(() => null)]);
-            setSettings(data);
+            const provider = data.ai_provider || 'ollama';
+            const providerConfigs = normalizeProviderConfigs(data.llm_provider_configs || {});
+            providerConfigs[provider] = normalizeLlmConfig(provider, {
+                ...providerConfigs[provider],
+                ai_model: data.ai_model,
+                ai_base_url: data.ai_base_url,
+                ai_api_key: data.ai_api_key,
+            });
+            const activeConfig = providerConfigs[provider];
+            setSettings({
+                ...data,
+                llm_provider_configs: providerConfigs,
+                ai_model: activeConfig.ai_model || data.ai_model,
+                ai_base_url: activeConfig.ai_base_url || data.ai_base_url,
+                ai_api_key: activeConfig.ai_api_key || '',
+            });
             if (info) {
                 const base = String(info.oauth_bridge_base_url ?? '')
                     .trim()
@@ -259,7 +300,7 @@ const Settings = () => {
                 setOauthBridgeBaseUrl('');
             }
             if (data.ai_provider) {
-                fetchAvailableModels(data.ai_provider, data.ai_base_url, data.ai_api_key);
+                fetchAvailableModels(provider, activeConfig.ai_base_url || data.ai_base_url, activeConfig.ai_api_key || data.ai_api_key);
             }
         } catch (err) {
             setError('Failed to load settings. Please try again.');
@@ -277,7 +318,19 @@ const Settings = () => {
 
         try {
             const updated = await settingsService.updateSettings(buildSettingsPayload(settings));
-            setSettings((prev) => ({ ...prev, ...updated }));
+            setSettings((prev) => {
+                const provider = updated.ai_provider || prev.ai_provider || 'ollama';
+                const providerConfigs = normalizeProviderConfigs(updated.llm_provider_configs || prev.llm_provider_configs || {});
+                const activeConfig = normalizeLlmConfig(provider, providerConfigs[provider]);
+                return {
+                    ...prev,
+                    ...updated,
+                    llm_provider_configs: providerConfigs,
+                    ai_model: activeConfig.ai_model || updated.ai_model,
+                    ai_base_url: activeConfig.ai_base_url || updated.ai_base_url,
+                    ai_api_key: activeConfig.ai_api_key || '',
+                };
+            });
             setSuccessMessage('Settings saved successfully.');
             setTimeout(() => setSuccessMessage(null), 3000);
         } catch (err) {
@@ -291,8 +344,27 @@ const Settings = () => {
     const handleChange = (field) => (e) => {
         const raw = e.target.value;
         const numericFields = new Set(['max_tokens', 'review_runs']);
+        const llmFields = new Set(['ai_model', 'ai_base_url', 'ai_api_key']);
         const nextValue = numericFields.has(field) ? Number(raw) : raw;
-        setSettings((prev) => ({ ...prev, [field]: nextValue }));
+        setSettings((prev) => {
+            if (!llmFields.has(field)) {
+                return { ...prev, [field]: nextValue };
+            }
+            const provider = prev.ai_provider || 'ollama';
+            const configs = normalizeProviderConfigs(prev.llm_provider_configs || {});
+            configs[provider] = {
+                ...normalizeLlmConfig(provider, configs[provider]),
+                [field]: nextValue,
+            };
+            if (provider === 'ollama_cloud') {
+                configs[provider].ai_base_url = OLLAMA_CLOUD_BASE_URL;
+            }
+            return {
+                ...prev,
+                [field]: nextValue,
+                llm_provider_configs: configs,
+            };
+        });
     };
 
     const formatOAuthError = (err) => {
@@ -303,22 +375,20 @@ const Settings = () => {
     };
 
     const selectAiProvider = (newProvider) => {
-        setSettings((prev) => {
-            const next = { ...prev, ai_provider: newProvider };
-            if (newProvider === 'ollama_cloud') {
-                next.ai_base_url = OLLAMA_CLOUD_BASE_URL;
-            } else if (newProvider === 'ollama' && (!prev.ai_base_url || prev.ai_base_url === OLLAMA_CLOUD_BASE_URL)) {
-                next.ai_base_url = 'http://localhost:11434';
-            }
-            return next;
-        });
-        const baseUrl =
-            newProvider === 'ollama_cloud'
-                ? OLLAMA_CLOUD_BASE_URL
-                : newProvider === 'ollama' && (!settings.ai_base_url || settings.ai_base_url === OLLAMA_CLOUD_BASE_URL)
-                  ? 'http://localhost:11434'
-                  : settings.ai_base_url;
-        fetchAvailableModels(newProvider, baseUrl, settings.ai_api_key);
+        const configs = normalizeProviderConfigs(settings.llm_provider_configs || {});
+        const nextProviderConfig = normalizeLlmConfig(newProvider, configs[newProvider]);
+        setSettings((prev) => ({
+            ...prev,
+            ai_provider: newProvider,
+            ai_model: nextProviderConfig.ai_model,
+            ai_base_url: nextProviderConfig.ai_base_url,
+            ai_api_key: nextProviderConfig.ai_api_key,
+            llm_provider_configs: {
+                ...normalizeProviderConfigs(prev.llm_provider_configs || {}),
+                [newProvider]: nextProviderConfig,
+            },
+        }));
+        fetchAvailableModels(newProvider, nextProviderConfig.ai_base_url, nextProviderConfig.ai_api_key);
     };
 
     const connectGithubOAuth = async () => {
@@ -439,8 +509,9 @@ const Settings = () => {
 
     const llmNeedsApiKey = (id) => ['ollama_cloud', 'openai', 'anthropic', 'gemini'].includes(id);
     const isLlmConfigured = (id) => {
-        if (settings.ai_provider !== id) return false;
-        if (llmNeedsApiKey(id)) return Boolean(String(settings.ai_api_key || '').trim());
+        const configs = normalizeProviderConfigs(settings.llm_provider_configs || {});
+        const cfg = normalizeLlmConfig(id, configs[id]);
+        if (llmNeedsApiKey(id)) return Boolean(String(cfg.ai_api_key || '').trim());
         if (id === 'ollama') return true;
         return true;
     };
@@ -753,7 +824,7 @@ const Settings = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto animate-fade-in pb-8">
+        <div className="max-w-6xl mx-auto animate-fade-in pb-8">
             {connectionModal === 'github' && (
                 <Modal title="GitHub connection" onClose={() => setConnectionModal(null)}>
                     {renderGithubModalBody()}
@@ -779,9 +850,27 @@ const Settings = () => {
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Configure Git providers, LLM, and review parameters in one place.</p>
                     </div>
+                    <button
+                        type="submit"
+                        form="settings-form"
+                        disabled={saving}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-sm font-bold rounded-lg shadow-lg shadow-primary-200 dark:shadow-none transition-all duration-200"
+                    >
+                        {saving ? (
+                            <>
+                                <Loader2 className="animate-spin w-4 h-4" />
+                                <span>Saving settings…</span>
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-4 h-4" />
+                                <span>Save</span>
+                            </>
+                        )}
+                    </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-10 max-h-[calc(100vh-12rem)] overflow-y-auto">
+                <form id="settings-form" onSubmit={handleSubmit} className="p-6 space-y-10 max-h-[calc(100vh-12rem)] overflow-y-auto">
                     {successMessage && (
                         <div className="p-3.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-lg flex items-center gap-3 animate-fade-in">
                             <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
@@ -843,14 +932,14 @@ const Settings = () => {
                     {/* LLM Provider */}
                     <section>
                         <SectionHeader title="LLM provider" description="Choose the active model backend. Green border marks the selected provider." />
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div className="flex flex-wrap gap-3">
                             {LLM_PROVIDERS.map(({ id, label, iconSrc, iconTone }) => {
                                 const selected = settings.ai_provider === id;
                                 const configured = isLlmConfigured(id);
                                 return (
                                     <div
                                         key={id}
-                                        className={`relative flex flex-col aspect-square justify-center items-center rounded-2xl border-2 p-3 transition-all ${
+                                        className={`relative min-w-[150px] flex flex-col aspect-square justify-center items-center rounded-2xl border-2 p-3 transition-all ${
                                             selected
                                                 ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm'
                                                 : 'border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600'
@@ -863,9 +952,9 @@ const Settings = () => {
                                             aria-pressed={selected}
                                             aria-label={`Select ${label}`}
                                         />
-                                        <div className="relative z-10 flex flex-col flex-1 min-h-0 h-full w-full justify-center items-center pointer-events-none">
+                                        <div className="relative z-10 flex flex-col flex-1 min-h-0 h-full w-full justify-center items-start pointer-events-none">
                                             <div className="p-1.5 rounded-lg bg-white/90 dark:bg-slate-800/90 ring-1 ring-slate-200/70 dark:ring-slate-600 flex items-center justify-center w-fit shrink-0">
-                                                <BrandIcon src={iconSrc} alt="" tone={iconTone} className="w-16 h-16 object-contain" />
+                                                <BrandIcon src={iconSrc} alt="" tone={iconTone} className="min-w-16 min-h-16 object-contain" />
                                             </div>
                                             <p className="mt-2 text-[11px] font-bold text-slate-900 dark:text-slate-100 leading-tight text-left">{label}</p>
                                             <div className="mt-auto flex items-center justify-between gap-1 pt-2 min-w-0 w-full">
@@ -923,25 +1012,6 @@ const Settings = () => {
                         </div>
                     </section>
 
-                    <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-sm font-bold rounded-lg shadow-lg shadow-primary-200 dark:shadow-none transition-all duration-200"
-                        >
-                            {saving ? (
-                                <>
-                                    <Loader2 className="animate-spin w-4 h-4" />
-                                    <span>Saving settings…</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-4 h-4" />
-                                    <span>Save configuration</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
                 </form>
             </div>
         </div>

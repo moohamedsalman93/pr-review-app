@@ -107,7 +107,7 @@ const WindowControls = ({ showCloseConfirmation = false }) => {
 const NavItem = ({ to, icon: Icon, label, collapsed, active }) => (
     <Link
         to={to}
-        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${active
+        className={`flex items-center gap-3  py-2 rounded-lg transition-all duration-200 group relative ${collapsed ? 'px-2' : 'px-3'} ${active
             ? 'bg-primary-600 text-white shadow-lg shadow-primary-200 dark:shadow-primary-900/20'
             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
             }`}
