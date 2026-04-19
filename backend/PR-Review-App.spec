@@ -1,10 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('app', 'app')]
-if os.path.isdir('tiktoken_cache'):
-    datas.append(('tiktoken_cache', 'tiktoken_cache'))
+try:
+    _backend_root = os.path.dirname(os.path.abspath(SPEC))
+except NameError:
+    _backend_root = os.path.dirname(os.path.abspath(__file__))
+_env_path = os.path.join(_backend_root, '.env')
+
+datas = [('app', 'app'), ('tiktoken_cache', 'tiktoken_cache')]
+if os.path.isfile(_env_path):
+    datas.append((_env_path, '.'))
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('tiktoken')

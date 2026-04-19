@@ -8,7 +8,25 @@ if getattr(sys, 'frozen', False):
 
 import uvicorn
 
+
+def _load_bundled_dotenv():
+    """PyInstaller one-file extracts data to sys._MEIPASS; load bundled .env before chdir."""
+    if not getattr(sys, "frozen", False):
+        return
+    path = os.path.join(sys._MEIPASS, ".env")
+    if not os.path.isfile(path):
+        return
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(path, override=False)
+    except OSError:
+        pass
+
+
 if __name__ == "__main__":
+    _load_bundled_dotenv()
+
     # Get the directory where the launcher is located
     base_dir = os.path.dirname(os.path.abspath(__file__))
     

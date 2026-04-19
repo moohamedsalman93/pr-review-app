@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Settings as SettingsIcon,
     Save,
@@ -170,17 +171,19 @@ function Modal({ title, children, onClose }) {
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
 
-    return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm animate-fade-in"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-modal-title"
-            onMouseDown={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
-        >
-            <div className="w-full max-w-lg max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl">
+    return createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+            <div
+                className="absolute inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm"
+                aria-hidden
+                onMouseDown={onClose}
+            />
+            <div
+                className="relative z-10 w-full max-w-lg max-h-[min(90vh,720px)] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl animate-fade-in-opacity"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settings-modal-title"
+            >
                 <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
                     <h2 id="settings-modal-title" className="text-sm font-bold text-slate-900 dark:text-slate-100">
                         {title}
@@ -196,7 +199,8 @@ function Modal({ title, children, onClose }) {
                 </div>
                 <div className="p-5">{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -842,10 +846,10 @@ const Settings = () => {
             )}
 
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors duration-300">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50 transition-colors duration-300">
-                    <div>
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between bg-slate-50/50 dark:bg-slate-800/50 transition-colors duration-300">
+                    <div className="min-w-0 flex-1">
                         <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                            <SettingsIcon className="h-5 w-5 text-primary-600 dark:text-primary-400" />
+                            <SettingsIcon className="h-5 w-5 text-primary-600 dark:text-primary-400 shrink-0" />
                             Application Settings
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Configure Git providers, LLM, and review parameters in one place.</p>
@@ -854,7 +858,7 @@ const Settings = () => {
                         type="submit"
                         form="settings-form"
                         disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-sm font-bold rounded-lg shadow-lg shadow-primary-200 dark:shadow-none transition-all duration-200"
+                        className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-sm font-bold rounded-lg shadow-lg shadow-primary-200 dark:shadow-none transition-all duration-200 w-full sm:w-auto"
                     >
                         {saving ? (
                             <>
@@ -899,12 +903,16 @@ const Settings = () => {
                                 </div>
                                 <span className="mt-3 text-sm font-bold text-slate-900 dark:text-slate-100 text-left">GitHub</span>
                                 <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-                                    {settings.github_token_configured ? (
-                                        <StatusChip tone="success">Connected</StatusChip>
-                                    ) : (
-                                        <StatusChip tone="muted">Not configured</StatusChip>
-                                    )}
-                                    <span className="text-xs font-bold text-primary-600 dark:text-primary-400 group-hover:underline shrink-0">Config</span>
+                                    <div className="flex min-h-[2.75rem] flex-1 items-center min-w-0">
+                                        {settings.github_token_configured ? (
+                                            <StatusChip tone="success">Connected</StatusChip>
+                                        ) : (
+                                            <StatusChip tone="muted">Not configured</StatusChip>
+                                        )}
+                                    </div>
+                                    <span className="text-xs font-bold text-primary-600 dark:text-primary-400 group-hover:underline shrink-0 self-center leading-none">
+                                        Config
+                                    </span>
                                 </div>
                             </button>
 
@@ -918,12 +926,16 @@ const Settings = () => {
                                 </div>
                                 <span className="mt-3 text-sm font-bold text-slate-900 dark:text-slate-100 text-left">GitLab</span>
                                 <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-                                    {settings.gitlab_token_configured ? (
-                                        <StatusChip tone="success">Connected</StatusChip>
-                                    ) : (
-                                        <StatusChip tone="muted">-</StatusChip>
-                                    )}
-                                    <span className="text-xs font-bold text-primary-600 dark:text-primary-400 group-hover:underline shrink-0">Config</span>
+                                    <div className="flex min-h-[2.75rem] flex-1 items-center min-w-0">
+                                        {settings.gitlab_token_configured ? (
+                                            <StatusChip tone="success">Connected</StatusChip>
+                                        ) : (
+                                            <StatusChip tone="muted">Not configured</StatusChip>
+                                        )}
+                                    </div>
+                                    <span className="text-xs font-bold text-primary-600 dark:text-primary-400 group-hover:underline shrink-0 self-center leading-none">
+                                        Config
+                                    </span>
                                 </div>
                             </button>
                         </div>
@@ -1011,7 +1023,6 @@ const Settings = () => {
                             />
                         </div>
                     </section>
-
                 </form>
             </div>
         </div>
