@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://pr-ai-reviewer.web.app/"><strong>⬇️ Download from Website</strong></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/moohamedsalman93/pr-review-app/releases/latest"><img src="https://img.shields.io/github/v/release/moohamedsalman93/pr-review-app?style=flat-square&label=Latest%20Release&color=blue" alt="Latest Release" /></a>
   <a href="https://github.com/moohamedsalman93/pr-review-app/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20arm64-lightgrey?style=flat-square" alt="Platform" />
@@ -137,7 +141,7 @@ pr-review-app/
 
 ## 📦 Installation & Setup
 
-### 1. Clone the Repository
+### 1. Clone the Repository (Optional - for local development)
 
 ```bash
 git clone https://github.com/moohamedsalman93/pr-review-app.git

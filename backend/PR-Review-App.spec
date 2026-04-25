@@ -9,7 +9,10 @@ except NameError:
     _backend_root = os.path.dirname(os.path.abspath(__file__))
 _env_path = os.path.join(_backend_root, '.env')
 
-datas = [('app', 'app'), ('tiktoken_cache', 'tiktoken_cache')]
+datas = [('app', 'app')]
+_tiktoken_cache_path = os.path.join(_backend_root, 'tiktoken_cache')
+if os.path.isdir(_tiktoken_cache_path):
+    datas.append((_tiktoken_cache_path, 'tiktoken_cache'))
 if os.path.isfile(_env_path):
     datas.append((_env_path, '.'))
 binaries = []
