@@ -2,8 +2,10 @@ import yaml
 import re
 import asyncio
 import logging
+import json
 from typing import List, Optional
 from functools import partial
+from litellm import completion
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +175,12 @@ class PRAgentService:
         }
         seen_suggestion_keys = set()
         last_error: Exception | None = None
+        had_tool_errors = False
+        first_tool_error_message: str | None = None
 
         for run_idx in range(review_runs):
             await log(f"Initializing PR-Agent tools (pass {run_idx + 1}/{review_runs})...")
+            pass_had_error = False
             try:
                 reviewer = PRReviewer(
                     pr_url=pr_url,
@@ -223,6 +228,7 @@ class PRAgentService:
                 timeout=per_pass_timeout,
             )
             if pending:
+                pass_had_error = True
                 await log(
                     f"Warning: Some AI tasks timed out after {per_pass_timeout}s",
                     "warning",
@@ -235,13 +241,19 @@ class PRAgentService:
                 try:
                     await task
                 except Exception as e:
+                    pass_had_error = True
+                    if first_tool_error_message is None:
+                        first_tool_error_message = str(e)
                     await log(f"AI task finished with error: {e}", "warning")
 
             await log(f"Processing AI results (pass {run_idx + 1}/{review_runs})...")
 
             try:
+                pass_produced_output = False
+
                 # Metadata from reviewer
                 if reviewer.prediction:
+                    pass_produced_output = True
                     try:
                         review_data = load_yaml(reviewer.prediction.strip()).get("review", {})
                         score = self._parse_int(review_data.get("score"))
@@ -268,6 +280,8 @@ class PRAgentService:
                     raw_list = improver.data.get("code_suggestions")
                     if not isinstance(raw_list, list):
                         raw_list = []
+                    if raw_list:
+                        pass_produced_output = True
                     for suggestion_data in raw_list:
                         if not isinstance(suggestion_data, dict):
                             continue
@@ -293,19 +307,165 @@ class PRAgentService:
 
                 # Description (keep first non-empty)
                 if aggregated["description"] is None and hasattr(describer, "prediction") and describer.prediction:
+                    pass_produced_output = True
                     aggregated["description"] = describer.prediction
+                elif hasattr(describer, "prediction") and describer.prediction:
+                    pass_produced_output = True
 
+                # Some provider/tool errors are swallowed internally by PR-Agent and only logged.
+                # If the whole pass produced no usable artifacts at all, treat it as a failed pass.
+                if not pass_produced_output:
+                    pass_had_error = True
+                    if first_tool_error_message is None:
+                        first_tool_error_message = "No AI output was produced by the configured model."
+                    await log(
+                        f"Warning: review pass {run_idx + 1}/{review_runs} returned no AI output.",
+                        "warning",
+                    )
+
+                had_tool_errors = had_tool_errors or pass_had_error
                 last_error = None
             except Exception as e:
                 last_error = e
                 await log(f"Warning: review pass {run_idx + 1}/{review_runs} failed: {e}", "warning")
                 continue
 
+        if had_tool_errors:
+            detail = first_tool_error_message or "AI review failed due to internal tool errors."
+            raise RuntimeError(f"AI review failed: {detail}")
         if aggregated["suggestions"] or aggregated["description"] or aggregated["score"] is not None:
             return aggregated
         if last_error:
             raise last_error
         return aggregated
+
+    def _build_litellm_call_kwargs(self) -> dict:
+        provider = (self.app_settings.ai_provider or "").lower()
+        kwargs = {}
+        if self.app_settings.ai_api_key:
+            kwargs["api_key"] = self.app_settings.ai_api_key
+        if self.app_settings.ai_base_url and provider not in {"anthropic", "gemini"}:
+            kwargs["api_base"] = self.app_settings.ai_base_url
+        return kwargs
+
+    def _resolve_litellm_model(self) -> str:
+        provider = (self.app_settings.ai_provider or "").lower()
+        model = self.app_settings.ai_model
+        if provider in {"ollama", "ollama_cloud"} and not model.startswith("ollama/"):
+            return f"ollama/{model}"
+        return model
+
+    async def review_commit(
+        self,
+        commit_url: str,
+        provider_service: object,
+        log_callback: Optional[callable] = None,
+        extended: bool = False,
+        extra_instructions: str = None,
+    ) -> dict:
+        """
+        Review a single commit by fetching commit patch and running one LLM pass.
+        """
+        async def log(msg, level="info"):
+            if log_callback:
+                await log_callback(msg, level)
+
+        self.app_settings = get_app_settings()
+        await log("Fetching commit details for AI analysis...")
+        commit_info = await asyncio.to_thread(provider_service.get_commit_info, commit_url)
+
+        diff_parts = []
+        for d in commit_info.diffs[:80]:
+            patch = d.diff or ""
+            if not patch.strip():
+                continue
+            diff_parts.append(f"File: {d.new_path or d.filename}\n```diff\n{patch[:8000]}\n```")
+        diff_blob = "\n\n".join(diff_parts)[:120000]
+        if not diff_blob.strip():
+            raise ValueError("Commit has no patch content to review (binary-only or empty diff).")
+
+        depth_hint = "Generate up to 30 suggestions." if extended else "Generate up to 12 suggestions."
+        instruction_block = extra_instructions.strip() if extra_instructions else "No extra instructions."
+        prompt = f"""
+You are an expert code reviewer.
+Review this single git commit and return STRICT JSON only.
+
+Rules:
+- Focus on correctness, security, performance, and maintainability.
+- Include precise file paths and line hints when possible.
+- {depth_hint}
+- Respect extra project rules: {instruction_block}
+
+Return JSON in this shape:
+{{
+  "review": {{
+    "score": 1-100,
+    "estimated_effort_to_review_[1-5]": 1-5,
+    "security_concerns": "string or null"
+  }},
+  "code_suggestions": [
+    {{
+      "relevant_file": "path/to/file",
+      "relevant_lines_start": 1,
+      "relevant_lines_end": 1,
+      "severity": "info|warning|error",
+      "category": "style|bug|performance|security|best_practice",
+      "suggestion": "what to improve",
+      "suggestion_content": "why this matters"
+    }}
+  ],
+  "summary": "short summary"
+}}
+
+Commit title: {commit_info.title}
+Commit description:
+{commit_info.description or ""}
+
+Patch data:
+{diff_blob}
+"""
+
+        await log("Running LLM commit review...")
+        model = self._resolve_litellm_model()
+        litellm_kwargs = self._build_litellm_call_kwargs()
+        response = await asyncio.to_thread(
+            completion,
+            model=model,
+            messages=[
+                {"role": "system", "content": "Return JSON only, no markdown."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            timeout=300,
+            **litellm_kwargs,
+        )
+
+        text = (response.choices[0].message.content or "").strip()
+        json_match = re.search(r"\{[\s\S]*\}", text)
+        payload_text = json_match.group(0) if json_match else text
+        try:
+            payload = json.loads(payload_text)
+        except Exception:
+            payload = {"review": {}, "code_suggestions": [], "summary": text[:500]}
+
+        review_data = payload.get("review", {}) if isinstance(payload, dict) else {}
+        raw_suggestions = payload.get("code_suggestions", []) if isinstance(payload, dict) else []
+        suggestions: List[CodeSuggestion] = []
+        for item in raw_suggestions if isinstance(raw_suggestions, list) else []:
+            if not isinstance(item, dict):
+                continue
+            suggestion = self._convert_suggestion(item)
+            if suggestion:
+                suggestions.append(suggestion)
+
+        return {
+            "score": self._parse_int(review_data.get("score")),
+            "effort": self._parse_int(review_data.get("estimated_effort_to_review_[1-5]")),
+            "security_concerns": review_data.get("security_concerns"),
+            "can_be_split": None,
+            "suggestions": suggestions,
+            "description": payload.get("summary") if isinstance(payload, dict) else None,
+        }
 
     async def chat_with_pr(self, pr_url: str, question: str, request: Optional[object] = None) -> str:
         """

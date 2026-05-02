@@ -162,7 +162,7 @@ function normalizeProviderConfigs(raw = {}) {
     return Object.fromEntries(LLM_PROVIDERS.map(({ id }) => [id, normalizeLlmConfig(id, raw[id])]));
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, icon, children, onClose }) {
     useEffect(() => {
         const onKey = (e) => {
             if (e.key === 'Escape') onClose();
@@ -172,7 +172,7 @@ function Modal({ title, children, onClose }) {
     }, [onClose]);
 
     return createPortal(
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-1000 flex items-center justify-center p-4">
             <div
                 className="absolute inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm"
                 aria-hidden
@@ -185,7 +185,12 @@ function Modal({ title, children, onClose }) {
                 aria-labelledby="settings-modal-title"
             >
                 <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
-                    <h2 id="settings-modal-title" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    <h2 id="settings-modal-title" className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        {icon ? (
+                            <span className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                {icon}
+                            </span>
+                        ) : null}
                         {title}
                     </h2>
                     <button
@@ -248,6 +253,18 @@ const Settings = () => {
         gitlab_oauth_ready: false,
         github_publisher_oauth: false,
         gitlab_publisher_oauth: false,
+        github_user_login: null,
+        github_user_name: null,
+        github_user_email: null,
+        github_user_id: null,
+        github_user_avatar_url: null,
+        github_user_type: null,
+        gitlab_user_username: null,
+        gitlab_user_name: null,
+        gitlab_user_email: null,
+        gitlab_user_id: null,
+        gitlab_user_avatar_url: null,
+        gitlab_user_web_url: null,
         ai_provider: 'ollama',
         ai_model: 'gemini-1.5-flash-latest',
         ai_api_key: '',
@@ -519,6 +536,21 @@ const Settings = () => {
         if (id === 'ollama') return true;
         return true;
     };
+    const ProfileAvatar = ({ src, fallback }) => (
+        <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-700 ring-2 ring-white/80 dark:ring-slate-800 flex items-center justify-center overflow-hidden shrink-0">
+            {src ? (
+                <img src={src} alt="" className="w-full h-full object-cover" />
+            ) : (
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-200">{fallback}</span>
+            )}
+        </div>
+    );
+    const ProfileMetaRow = ({ label, value, mono = false }) => (
+        <div className="flex items-start gap-2 text-xs">
+            <span className="text-slate-500 dark:text-slate-400 min-w-[56px]">{label}</span>
+            <span className={`text-slate-800 dark:text-slate-200 break-all ${mono ? 'font-mono' : ''}`}>{value}</span>
+        </div>
+    );
 
     if (loading) {
         return (
@@ -532,25 +564,38 @@ const Settings = () => {
     const renderGitlabModalBody = () => (
         <div className="space-y-5">
             {settings.gitlab_token_configured ? (
-                <div className="p-4 rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <div>
-                            <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Connected to GitLab</p>
-                            {settings.gitlab_url?.trim() && (
-                                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-mono break-all">{settings.gitlab_url}</p>
-                            )}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/45">
+                    <div className="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
+                        <div className="min-w-0 flex items-start gap-3 sm:pr-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700 flex-1">
+                            <ProfileAvatar
+                                src={settings.gitlab_user_avatar_url}
+                                fallback={(settings.gitlab_user_name || settings.gitlab_user_username || 'GL').slice(0, 2).toUpperCase()}
+                            />
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Connected to GitLab</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">OAuth or personal access token is stored on the server.</p>
+                                {settings.gitlab_url?.trim() && (
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono break-all">{settings.gitlab_url}</p>
+                                )}
+                                {(settings.gitlab_user_name || settings.gitlab_user_username || settings.gitlab_user_email) && (
+                                    <div className="mt-3 space-y-1.5">
+                                        {settings.gitlab_user_name && <ProfileMetaRow label="Name" value={settings.gitlab_user_name} />}
+                                        {settings.gitlab_user_username && <ProfileMetaRow label="Username" value={`@${settings.gitlab_user_username}`} />}
+                                        {settings.gitlab_user_email && <ProfileMetaRow label="Email" value={settings.gitlab_user_email} />}
+                                    </div>
+                                )}
+                            </div>
                         </div>
+                        <button
+                            type="button"
+                            onClick={handleDisconnectGitlab}
+                            disabled={gitlabDisconnectBusy}
+                            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 bg-white/80 dark:bg-slate-900/80 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 shrink-0 self-start"
+                        >
+                            {gitlabDisconnectBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
+                            Disconnect
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleDisconnectGitlab}
-                        disabled={gitlabDisconnectBusy}
-                        className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 bg-white/80 dark:bg-slate-900/80 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 shrink-0"
-                    >
-                        {gitlabDisconnectBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
-                        Disconnect
-                    </button>
                 </div>
             ) : (
                 <>
@@ -578,7 +623,7 @@ const Settings = () => {
                         <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Sign in with GitLab</p>
                         {settings.gitlab_publisher_oauth && (
                             <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                                This build includes GitLab.com OAuth—you only need to click Connect (GitLab URL must stay{' '}
+                                This build includes GitLab.com OAuth-you only need to click Connect (GitLab URL must stay{' '}
                                 <span className="font-mono">https://gitlab.com</span> unless your publisher configured another instance).
                             </p>
                         )}
@@ -594,7 +639,7 @@ const Settings = () => {
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
                         >
                             {oauthGitlabBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
-                            {oauthGitlabBusy ? 'Waiting for browser…' : 'Connect with GitLab'}
+                            {oauthGitlabBusy ? 'Waiting for browser...' : 'Connect with GitLab'}
                         </button>
                         <details className="group border-t border-slate-200 dark:border-slate-700 pt-3 mt-1">
                             <summary className="text-[11px] font-bold text-slate-600 dark:text-slate-400 cursor-pointer list-none">Custom OAuth application (optional)</summary>
@@ -618,7 +663,7 @@ const Settings = () => {
                                     type="password"
                                     value={settings.gitlab_client_secret}
                                     onChange={handleChange('gitlab_client_secret')}
-                                    placeholder={settings.gitlab_client_secret_set ? 'Unchanged if left blank — paste to replace' : 'Secret'}
+                                    placeholder={settings.gitlab_client_secret_set ? 'Unchanged if left blank - paste to replace' : 'Secret'}
                                 />
                             </div>
                         </details>
@@ -631,23 +676,35 @@ const Settings = () => {
     const renderGithubModalBody = () => (
         <div className="space-y-5">
             {settings.github_token_configured ? (
-                <div className="p-4 rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="flex items-start gap-3 min-w-0">
-                        <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <div>
-                            <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Connected to GitHub</p>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">OAuth or personal access token is stored on the server.</p>
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/45">
+                    <div className="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
+                        <div className="min-w-0 flex items-start gap-3 sm:pr-4 sm:border-r sm:border-slate-200 dark:sm:border-slate-700 flex-1">
+                            <ProfileAvatar
+                                src={settings.github_user_avatar_url}
+                                fallback={(settings.github_user_name || settings.github_user_login || 'GH').slice(0, 2).toUpperCase()}
+                            />
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Connected to GitHub</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">OAuth or personal access token is stored on the server.</p>
+                                {(settings.github_user_name || settings.github_user_login || settings.github_user_email) && (
+                                    <div className="mt-3 space-y-1.5">
+                                        {settings.github_user_name && <ProfileMetaRow label="Name" value={settings.github_user_name} />}
+                                        {settings.github_user_login && <ProfileMetaRow label="Login" value={`@${settings.github_user_login}`} />}
+                                        {settings.github_user_email && <ProfileMetaRow label="Email" value={settings.github_user_email} />}
+                                    </div>
+                                )}
+                            </div>
                         </div>
+                        <button
+                            type="button"
+                            onClick={handleDisconnectGithub}
+                            disabled={githubDisconnectBusy}
+                            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 bg-white/80 dark:bg-slate-900/80 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 shrink-0 self-start"
+                        >
+                            {githubDisconnectBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
+                            Disconnect
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleDisconnectGithub}
-                        disabled={githubDisconnectBusy}
-                        className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 bg-white/80 dark:bg-slate-900/80 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 shrink-0"
-                    >
-                        {githubDisconnectBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unplug className="w-3.5 h-3.5" />}
-                        Disconnect
-                    </button>
                 </div>
             ) : (
                 <>
@@ -830,12 +887,20 @@ const Settings = () => {
     return (
         <div className="max-w-6xl mx-auto animate-fade-in pb-8">
             {connectionModal === 'github' && (
-                <Modal title="GitHub connection" onClose={() => setConnectionModal(null)}>
+                <Modal
+                    title="GitHub connection"
+                    icon={<BrandIcon src={githubBrand} alt="GitHub" className="w-4 h-4 object-contain" />}
+                    onClose={() => setConnectionModal(null)}
+                >
                     {renderGithubModalBody()}
                 </Modal>
             )}
             {connectionModal === 'gitlab' && (
-                <Modal title="GitLab connection" onClose={() => setConnectionModal(null)}>
+                <Modal
+                    title="GitLab connection"
+                    icon={<BrandIcon src={gitlabBrand} alt="GitLab" className="w-4 h-4 object-contain" />}
+                    onClose={() => setConnectionModal(null)}
+                >
                     {renderGitlabModalBody()}
                 </Modal>
             )}
@@ -972,10 +1037,12 @@ const Settings = () => {
                                             <div className="mt-auto flex items-center justify-between gap-1 pt-2 min-w-0 w-full">
                                                 {configured ? (
                                                     <StatusChip tone="success">Configured</StatusChip>
-                                                ) : selected && llmNeedsApiKey(id) ? (
+                                                ) : llmNeedsApiKey(id) ? (
                                                     <StatusChip tone="warn">Needs key</StatusChip>
+                                                ) : selected ? (
+                                                    <StatusChip tone="muted">Active</StatusChip>
                                                 ) : (
-                                                    <StatusChip tone="muted">{selected ? 'Active' : '—'}</StatusChip>
+                                                    <StatusChip tone="muted">Not configured</StatusChip>
                                                 )}
                                                 <button
                                                     type="button"

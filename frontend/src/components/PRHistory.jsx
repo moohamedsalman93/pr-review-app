@@ -10,18 +10,22 @@ import {
     Github,
     GitBranch,
     AlertCircle,
-    ChevronRight,
     Calendar,
     User,
     ArrowUpRight,
     Search,
-    Trash2
+    Trash2,
+    RotateCcw,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 
 const PRHistory = () => {
+    const REVIEWS_PER_PAGE = 10;
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         loadReviews();
@@ -41,6 +45,7 @@ const PRHistory = () => {
     };
 
     const [deletingId, setDeletingId] = useState(null);
+    const [rerunningId, setRerunningId] = useState(null);
 
     const handleDelete = async (id, e) => {
         e.preventDefault();
@@ -59,6 +64,22 @@ const PRHistory = () => {
             alert('Failed to delete review. Please try again.');
         } finally {
             setDeletingId(null);
+        }
+    };
+
+    const handleReReview = async (id, e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        setRerunningId(id);
+        try {
+            await reviewService.extendReview(id);
+            await loadReviews();
+        } catch (err) {
+            console.error('Failed to trigger re-review:', err);
+            alert('Failed to start re-review. Please try again.');
+        } finally {
+            setRerunningId(null);
         }
     };
 
@@ -105,6 +126,20 @@ const PRHistory = () => {
         (r.project_name || '').toLowerCase().includes(filter.toLowerCase()) ||
         (r.pr_url || '').toLowerCase().includes(filter.toLowerCase())
     );
+
+    const totalPages = Math.max(1, Math.ceil(filteredReviews.length / REVIEWS_PER_PAGE));
+    const pageStartIndex = (currentPage - 1) * REVIEWS_PER_PAGE;
+    const paginatedReviews = filteredReviews.slice(pageStartIndex, pageStartIndex + REVIEWS_PER_PAGE);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filter, reviews.length]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     if (loading && reviews.length === 0) {
         return (
@@ -155,7 +190,7 @@ const PRHistory = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {filteredReviews.map((review) => {
+                            {paginatedReviews.map((review) => {
                                 const styles = getStatusStyles(review.status);
                                 return (
                                     <tr key={review.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
@@ -181,7 +216,9 @@ const PRHistory = () => {
                                         </td>
                                         <td className="px-5 py-4">
                                             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${styles.bg} ${styles.text} ${styles.border}`}>
-                                                {React.cloneElement(styles.icon, { className: 'w-3 h-3' })}
+                                                {React.cloneElement(styles.icon, {
+                                                    className: `${styles.icon.props.className || ''} w-3 h-3`
+                                                })}
                                                 <span className="text-[10px] font-bold">{styles.label}</span>
                                             </div>
                                         </td>
@@ -208,8 +245,21 @@ const PRHistory = () => {
                                         <td className="px-5 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
+                                                    onClick={(e) => handleReReview(review.id, e)}
+                                                    disabled={review.status === 'reviewing' || rerunningId === review.id || deletingId === review.id}
+                                                    className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-900/50 hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-all group-hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    title="Run re-review"
+                                                >
+                                                    {rerunningId === review.id ? (
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    ) : (
+                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                    )}
+                                                    <span className="text-[10px] font-bold">Re-review</span>
+                                                </button>
+                                                <button
                                                     onClick={(e) => handleDelete(review.id, e)}
-                                                    disabled={deletingId === review.id}
+                                                    disabled={deletingId === review.id || rerunningId === review.id}
                                                     className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/10 transition-all group-hover:shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Delete review"
                                                 >
@@ -252,6 +302,35 @@ const PRHistory = () => {
                                 Start your first review <ArrowUpRight className="w-3.5 h-3.5" />
                             </Link>
                         )}
+                    </div>
+                )}
+
+                {filteredReviews.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-t border-slate-100 dark:border-slate-800">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Showing {pageStartIndex + 1}-{Math.min(pageStartIndex + REVIEWS_PER_PAGE, filteredReviews.length)} of {filteredReviews.length} reviews
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                                disabled={currentPage === 1}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5" />
+                                Prev
+                            </button>
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 min-w-[80px] text-center">
+                                Page {currentPage} / {totalPages}
+                            </span>
+                            <button
+                                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                                disabled={currentPage === totalPages}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                                Next
+                                <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

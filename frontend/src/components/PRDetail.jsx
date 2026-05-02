@@ -31,12 +31,15 @@ import {
     Layout as LayoutIcon,
     ChevronDown,
     ChevronUp,
+    ChevronLeft,
+    ChevronRight,
     MessageSquare,
     Download
 } from 'lucide-react';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 const PRDetail = () => {
+    const SUGGESTIONS_PER_PAGE = 10;
     const { id } = useParams();
     const { collapsed, toggleSidebar } = useSidebar();
     const [review, setReview] = useState(null);
@@ -157,19 +160,27 @@ const PRDetail = () => {
         return counts;
     }, [review]);
 
-    const groupedSuggestions = useMemo(() => {
-        if (!review?.suggestions) return {};
-        const groups = {};
-        review.suggestions.forEach(s => {
-            const cat = (s.category || 'best_practice').toLowerCase();
-            if (!groups[cat]) groups[cat] = [];
-            groups[cat].push(s);
-        });
-        return groups;
-    }, [review]);
-
     const [expandedSuggestions, setExpandedSuggestions] = useState({});
     const [activeSuggestion, setActiveSuggestion] = useState(null);
+    const [suggestionsPage, setSuggestionsPage] = useState(1);
+
+    const totalSuggestions = review?.suggestions?.length || 0;
+    const totalSuggestionPages = Math.max(1, Math.ceil(totalSuggestions / SUGGESTIONS_PER_PAGE));
+    const paginatedSuggestions = useMemo(() => {
+        if (!review?.suggestions) return [];
+        const start = (suggestionsPage - 1) * SUGGESTIONS_PER_PAGE;
+        return review.suggestions.slice(start, start + SUGGESTIONS_PER_PAGE);
+    }, [review?.suggestions, suggestionsPage]);
+
+    useEffect(() => {
+        setSuggestionsPage(1);
+    }, [id, totalSuggestions]);
+
+    useEffect(() => {
+        if (suggestionsPage > totalSuggestionPages) {
+            setSuggestionsPage(totalSuggestionPages);
+        }
+    }, [suggestionsPage, totalSuggestionPages]);
 
     const toggleSuggestion = (id) => {
         setExpandedSuggestions(prev => {
@@ -415,6 +426,16 @@ const PRDetail = () => {
                                                         <div className="w-10 h-10 border-4 border-primary-100 dark:border-primary-900/30 border-t-primary-600 dark:border-t-primary-500 rounded-full animate-spin mx-auto"></div>
                                                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">AI is currently analyzing the code changes...</p>
                                                     </div>
+                                                ) : review.status === 'failed' ? (
+                                                    <div className="space-y-2">
+                                                        <div className="inline-flex items-center justify-center w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-full mb-2">
+                                                            <XCircle className="w-6 h-6 text-red-500" />
+                                                        </div>
+                                                        <h3 className="text-base font-bold text-red-700 dark:text-red-400">Review failed</h3>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                                                            {review.error_message || 'The AI review could not be completed. Check the processing timeline for details.'}
+                                                        </p>
+                                                    </div>
                                                 ) : (
                                                     <div className="space-y-2">
                                                         <div className="inline-flex items-center justify-center w-12 h-12 bg-green-50 dark:bg-green-900/20 rounded-full mb-2">
@@ -436,81 +457,99 @@ const PRDetail = () => {
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors duration-300">
-                                                        {Object.entries(groupedSuggestions).map(([category, suggestions]) => (
-                                                            <React.Fragment key={category}>
-                                                                {suggestions.map((s, idx) => (
-                                                                    <React.Fragment key={s.id}>
-                                                                        <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                                                                            {idx === 0 && (
-                                                                                <td
-                                                                                    rowSpan={suggestions.length}
-                                                                                    className="px-5 py-3 text-[13px] font-bold text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-800 capitalize align-top"
-                                                                                >
-                                                                                    {category.replace('_', ' ')}
-                                                                                </td>
-                                                                            )}
-                                                                            <td className="px-5 py-3 border-r border-slate-200 dark:border-slate-800">
-                                                                                <button
-                                                                                    onClick={() => toggleSuggestion(s.id)}
-                                                                                    className="flex items-center gap-2 w-full text-left font-medium text-[13px] text-slate-700 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-                                                                                >
-                                                                                    {expandedSuggestions[s.id] ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
-                                                                                    <span className="flex-1">{s.suggestion.split('\n')[0]}</span>
-                                                                                </button>
+                                                        {paginatedSuggestions.map((s) => (
+                                                            <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                                                <td className="px-5 py-3 text-[13px] font-bold text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-800 capitalize align-top">
+                                                                    {(s.category || 'best_practice').replace('_', ' ')}
+                                                                </td>
+                                                                <td className="px-5 py-3 border-r border-slate-200 dark:border-slate-800">
+                                                                    <button
+                                                                        onClick={() => toggleSuggestion(s.id)}
+                                                                        className="flex items-center gap-2 w-full text-left font-medium text-[13px] text-slate-700 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
+                                                                    >
+                                                                        {expandedSuggestions[s.id] ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+                                                                        <span className="flex-1">{s.suggestion.split('\n')[0]}</span>
+                                                                    </button>
 
-                                                                                {expandedSuggestions[s.id] && (
-                                                                                    <div className="mt-3.5 pl-5 space-y-3.5 animate-fade-in">
-                                                                                        <div className="h-px bg-slate-100 dark:bg-slate-800" />
-                                                                                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                                                                                            {s.explanation || s.suggestion}
-                                                                                        </p>
-                                                                                        <div className="flex items-center gap-4 text-[11px] font-mono">
-                                                                                            <a
-                                                                                                href={`${review.pr_url}/files#diff-${s.file_path}`}
-                                                                                                target="_blank"
-                                                                                                rel="noreferrer"
-                                                                                                className="flex items-center gap-1.5 text-primary-600 dark:text-primary-400 hover:underline"
-                                                                                            >
-                                                                                                <FileCode className="w-3 h-3" />
-                                                                                                {s.file_path}:{s.line_start}{s.line_end !== s.line_start ? `-${s.line_end}` : ''}
-                                                                                            </a>
+                                                                    {expandedSuggestions[s.id] && (
+                                                                        <div className="mt-3.5 pl-5 space-y-3.5 animate-fade-in">
+                                                                            <div className="h-px bg-slate-100 dark:bg-slate-800" />
+                                                                            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                                                                                {s.explanation || s.suggestion}
+                                                                            </p>
+                                                                            <div className="flex items-center gap-4 text-[11px] font-mono">
+                                                                                <a
+                                                                                    href={`${review.pr_url}/files#diff-${s.file_path}`}
+                                                                                    target="_blank"
+                                                                                    rel="noreferrer"
+                                                                                    className="flex items-center gap-1.5 text-primary-600 dark:text-primary-400 hover:underline"
+                                                                                >
+                                                                                    <FileCode className="w-3 h-3" />
+                                                                                    {s.file_path}:{s.line_start}{s.line_end !== s.line_start ? `-${s.line_end}` : ''}
+                                                                                </a>
+                                                                            </div>
+                                                                            {(s.original_code || s.improved_code) && (
+                                                                                <DiffView oldCode={s.original_code} newCode={s.improved_code} />
+                                                                            )}
+                                                                            {s.score && (
+                                                                                <div className="pt-1.5">
+                                                                                    <details className="text-[11px] group">
+                                                                                        <summary className="cursor-pointer font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                                                                                            Suggestion importance[1-10]: {s.score}
+                                                                                        </summary>
+                                                                                        <div className="mt-1.5 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 leading-relaxed">
+                                                                                            {s.score_why || "The score reflects the impact of this change on code quality, security, or performance."}
                                                                                         </div>
-                                                                                        {(s.original_code || s.improved_code) && (
-                                                                                            <DiffView oldCode={s.original_code} newCode={s.improved_code} />
-                                                                                        )}
-                                                                                        {s.score && (
-                                                                                            <div className="pt-1.5">
-                                                                                                <details className="text-[11px] group">
-                                                                                                    <summary className="cursor-pointer font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                                                                                                        Suggestion importance[1-10]: {s.score}
-                                                                                                    </summary>
-                                                                                                    <div className="mt-1.5 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 leading-relaxed">
-                                                                                                        {s.score_why || "The score reflects the impact of this change on code quality, security, or performance."}
-                                                                                                    </div>
-                                                                                                </details>
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            <td className="px-5 py-3 text-center">
-                                                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${(s.score >= 9) ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30' :
-                                                                                    (s.score >= 7) ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-100 dark:border-yellow-900/30' :
-                                                                                        'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700'
-                                                                                    }`}>
-                                                                                    {s.score >= 9 ? 'High' : s.score >= 7 ? 'Medium' : 'Low'}
-                                                                                </span>
-                                                                            </td>
-                                                                        </tr>
-                                                                    </React.Fragment>
-                                                                ))}
-                                                            </React.Fragment>
+                                                                                    </details>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-5 py-3 text-center">
+                                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${(s.score >= 9) ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/30' :
+                                                                        (s.score >= 7) ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-100 dark:border-yellow-900/30' :
+                                                                            'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-slate-700'
+                                                                        }`}>
+                                                                        {s.score >= 9 ? 'High' : s.score >= 7 ? 'Medium' : 'Low'}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
                                                         ))}
                                                     </tbody>
                                                 </table>
                                             </div>
                                         )}
                                     </div>
+
+                                    {review.suggestions.length > 0 && (
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1">
+                                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                Showing {(suggestionsPage - 1) * SUGGESTIONS_PER_PAGE + 1}-{Math.min(suggestionsPage * SUGGESTIONS_PER_PAGE, totalSuggestions)} of {totalSuggestions} suggestions
+                                            </p>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setSuggestionsPage(prev => Math.max(1, prev - 1))}
+                                                    disabled={suggestionsPage === 1}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                                >
+                                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                                    Prev
+                                                </button>
+                                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 min-w-[80px] text-center">
+                                                    Page {suggestionsPage} / {totalSuggestionPages}
+                                                </span>
+                                                <button
+                                                    onClick={() => setSuggestionsPage(prev => Math.min(totalSuggestionPages, prev + 1))}
+                                                    disabled={suggestionsPage === totalSuggestionPages}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                                >
+                                                    Next
+                                                    <ChevronRight className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

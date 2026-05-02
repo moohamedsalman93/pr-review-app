@@ -30,6 +30,9 @@ _sqlite_ensure_column("app_settings", "gitlab_client_id", "gitlab_client_id VARC
 _sqlite_ensure_column("app_settings", "gitlab_client_secret", "gitlab_client_secret TEXT DEFAULT ''")
 _sqlite_ensure_column("app_settings", "gitlab_refresh_token", "gitlab_refresh_token TEXT DEFAULT ''")
 _sqlite_ensure_column("app_settings", "llm_provider_configs", "llm_provider_configs TEXT DEFAULT '{}'")
+_sqlite_ensure_column("pr_reviews", "target_type", "target_type VARCHAR(20) DEFAULT 'pr'")
+_sqlite_ensure_column("pr_reviews", "target_ref", "target_ref VARCHAR(200)")
+_sqlite_ensure_column("pr_reviews", "target_base_ref", "target_base_ref VARCHAR(200)")
 
 app = FastAPI(
     title="PR Review API",

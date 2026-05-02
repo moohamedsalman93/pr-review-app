@@ -151,7 +151,7 @@ const ChatDrawer = ({ isOpen, onClose, reviewId, prTitle, activeSuggestion, onCl
 
 
     return (
-        <div className={` ${isOpen ? 'w-[33%] opacity-100' : 'w-[0%] opacity-0'} transform-gpu transition-all duration-300 ease-in-out flex-shrink-0 absolute right-0 top-[39px] h-[calc(100vh-39px)] border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col animate-in slide-in-from-right duration-300 `}>
+        <div className={`${isOpen ? 'w-[33%] opacity-100 pointer-events-auto border-l border-slate-200 dark:border-slate-800' : 'w-0 opacity-0 pointer-events-none border-l-0'} overflow-hidden transform-gpu transition-all duration-300 ease-in-out flex-shrink-0 absolute right-0 top-[39px] h-[calc(100vh-39px)] bg-white dark:bg-slate-900 flex flex-col animate-in slide-in-from-right`}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-1  border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                 <div className="flex items-center gap-3">

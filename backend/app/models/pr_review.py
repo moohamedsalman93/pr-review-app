@@ -36,7 +36,10 @@ class PRReview(Base):
     __tablename__ = "pr_reviews"
 
     id = Column(Integer, primary_key=True, index=True)
-    pr_url = Column(Text, nullable=False)  # Renamed from gitlab_url
+    pr_url = Column(Text, nullable=False)  # Target URL (PR/MR or commit URL)
+    target_type = Column(String(20), nullable=False, default="pr")  # pr | commit
+    target_ref = Column(String(200), nullable=True)  # PR number or commit SHA
+    target_base_ref = Column(String(200), nullable=True)  # Optional base branch/SHA for commit comparisons
     provider = Column(String(50), nullable=False)  # New field: 'gitlab' or 'github'
     project_name = Column(String(500))
     pr_number = Column(Integer)  # Renamed from mr_number

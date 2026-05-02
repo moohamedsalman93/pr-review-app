@@ -8,10 +8,16 @@ const api = axios.create({
 
 export const reviewService = {
   // Submit a PR for review
-  submitReview: async (prUrl, ruleSetId = null) => {
-    const payload = { pr_url: prUrl };
+  submitReview: async (prUrl, ruleSetId = null, targetType = "pr", targetRef = null, targetBaseRef = null) => {
+    const payload = { pr_url: prUrl, target_type: targetType };
     if (ruleSetId) {
       payload.rule_set_id = ruleSetId;
+    }
+    if (targetRef) {
+      payload.target_ref = targetRef;
+    }
+    if (targetBaseRef) {
+      payload.target_base_ref = targetBaseRef;
     }
     const response = await api.post("/reviews", payload);
     return response.data;
@@ -22,6 +28,15 @@ export const reviewService = {
     const params = { page };
     if (status) params.status = status;
     const response = await api.get("/reviews", { params });
+    return response.data;
+  },
+
+  // Fetch recent provider PRs/MRs
+  getRecentPRs: async (limit = 20, provider = null, targetType = "pr") => {
+    const params = { limit };
+    if (provider) params.provider = provider;
+    if (targetType) params.target_type = targetType;
+    const response = await api.get("/reviews/recent", { params });
     return response.data;
   },
 

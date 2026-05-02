@@ -1,7 +1,9 @@
 import json
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 from sqlalchemy.orm import Session
 
 from ..config import clear_settings_cache
@@ -18,7 +20,117 @@ from ..oauth_env import (
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-def settings_to_response(settings: AppSettings) -> SettingsResponse:
+def _resolve_gitlab_api_base(gitlab_url: str) -> Optional[str]:
+    raw = (gitlab_url or "").strip().rstrip("/")
+    if not raw:
+        raw = "https://gitlab.com"
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _pick_github_email(headers: dict[str, str]) -> Optional[str]:
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            emails_resp = client.get("https://api.github.com/user/emails", headers=headers)
+    except Exception:
+        return None
+    if emails_resp.status_code != 200:
+        return None
+    try:
+        emails = emails_resp.json()
+    except Exception:
+        return None
+    if not isinstance(emails, list):
+        return None
+    primary_verified = next(
+        (
+            row.get("email")
+            for row in emails
+            if isinstance(row, dict) and row.get("primary") and row.get("verified") and row.get("email")
+        ),
+        None,
+    )
+    if primary_verified:
+        return str(primary_verified)
+    fallback = next((row.get("email") for row in emails if isinstance(row, dict) and row.get("email")), None)
+    return str(fallback) if fallback else None
+
+
+def _fetch_github_user_metadata(token: str) -> dict[str, object]:
+    t = (token or "").strip()
+    if not t:
+        return {}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {t}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get("https://api.github.com/user", headers=headers)
+    except Exception:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    email = data.get("email")
+    if not email:
+        email = _pick_github_email(headers)
+    return {
+        "github_user_login": data.get("login"),
+        "github_user_name": data.get("name"),
+        "github_user_email": email,
+        "github_user_id": data.get("id"),
+        "github_user_avatar_url": data.get("avatar_url"),
+        "github_user_type": data.get("type"),
+    }
+
+
+def _fetch_gitlab_user_metadata(gitlab_url: str, token: str) -> dict[str, object]:
+    t = (token or "").strip()
+    if not t:
+        return {}
+    base = _resolve_gitlab_api_base(gitlab_url)
+    if not base:
+        return {}
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(f"{base}/api/v4/user", headers={"Authorization": f"Bearer {t}"})
+    except Exception:
+        return {}
+    if resp.status_code != 200:
+        return {}
+    try:
+        data = resp.json()
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        "gitlab_user_username": data.get("username"),
+        "gitlab_user_name": data.get("name"),
+        "gitlab_user_email": data.get("email"),
+        "gitlab_user_id": data.get("id"),
+        "gitlab_user_avatar_url": data.get("avatar_url"),
+        "gitlab_user_web_url": data.get("web_url"),
+    }
+
+
+def _provider_user_metadata(settings: AppSettings) -> dict[str, object]:
+    out: dict[str, object] = {}
+    out.update(_fetch_github_user_metadata(settings.github_token or ""))
+    out.update(_fetch_gitlab_user_metadata(settings.gitlab_url or "", settings.gitlab_token or ""))
+    return out
+
+
+def settings_to_response(settings: AppSettings, provider_user_meta: Optional[dict[str, object]] = None) -> SettingsResponse:
     """API-safe view: never expose PATs or OAuth client secrets."""
     gh_secret = (settings.github_client_secret or "").strip()
     gl_secret = (settings.gitlab_client_secret or "").strip()
@@ -35,6 +147,7 @@ def settings_to_response(settings: AppSettings) -> SettingsResponse:
             },
         ),
     )
+    provider_user_meta = provider_user_meta or {}
     return SettingsResponse(
         id=settings.id,
         updated_at=settings.updated_at,
@@ -60,6 +173,18 @@ def settings_to_response(settings: AppSettings) -> SettingsResponse:
         gitlab_oauth_ready=gitlab_oauth_ready(settings),
         github_publisher_oauth=github_publisher_oauth_configured(),
         gitlab_publisher_oauth=gitlab_publisher_oauth_configured(settings),
+        github_user_login=provider_user_meta.get("github_user_login"),
+        github_user_name=provider_user_meta.get("github_user_name"),
+        github_user_email=provider_user_meta.get("github_user_email"),
+        github_user_id=provider_user_meta.get("github_user_id"),
+        github_user_avatar_url=provider_user_meta.get("github_user_avatar_url"),
+        github_user_type=provider_user_meta.get("github_user_type"),
+        gitlab_user_username=provider_user_meta.get("gitlab_user_username"),
+        gitlab_user_name=provider_user_meta.get("gitlab_user_name"),
+        gitlab_user_email=provider_user_meta.get("gitlab_user_email"),
+        gitlab_user_id=provider_user_meta.get("gitlab_user_id"),
+        gitlab_user_avatar_url=provider_user_meta.get("gitlab_user_avatar_url"),
+        gitlab_user_web_url=provider_user_meta.get("gitlab_user_web_url"),
     )
 
 OLLAMA_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434"
@@ -172,7 +297,7 @@ def get_or_create_settings(db: Session) -> AppSettings:
 def get_app_settings(db: Session = Depends(get_db)):
     """Get current application settings"""
     settings = get_or_create_settings(db)
-    return settings_to_response(settings)
+    return settings_to_response(settings, _provider_user_metadata(settings))
 
 
 @router.get("/models")
@@ -291,4 +416,4 @@ def update_settings(
     # Clear cache so services pick up new settings
     clear_settings_cache()
 
-    return settings_to_response(settings)
+    return settings_to_response(settings, _provider_user_metadata(settings))

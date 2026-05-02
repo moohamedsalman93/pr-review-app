@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Tuple
 
 
@@ -29,6 +30,19 @@ class PRInfo:
     diffs: List[PRDiff]
 
 
+@dataclass
+class RecentPR:
+    """Lightweight provider-agnostic recent PR/MR metadata."""
+    provider: str
+    project_name: str
+    pr_number: int
+    title: str
+    author: str
+    state: str
+    updated_at: datetime
+    web_url: str
+
+
 class BasePRService(ABC):
     """Abstract base class for PR/MR provider services"""
 
@@ -52,6 +66,20 @@ class BasePRService(ABC):
             
         Returns:
             PRInfo object containing PR details and file diffs
+        """
+        pass
+
+    @abstractmethod
+    def list_recent_prs(self, limit: int = 20) -> List[RecentPR]:
+        """
+        Fetch recent pull/merge requests visible to the authenticated user.
+        """
+        pass
+
+    @abstractmethod
+    def list_recent_commits(self, limit: int = 20) -> List[RecentPR]:
+        """
+        Fetch recent commits visible to the authenticated user.
         """
         pass
 

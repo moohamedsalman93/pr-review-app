@@ -3,6 +3,8 @@ from .pr_review import (
     PRReviewResponse, 
     PRReviewDetailResponse,
     PRReviewListResponse,
+    RecentPRItem,
+    RecentPRListResponse,
     SuggestionCreate,
     SuggestionResponse,
     ChatRequest,

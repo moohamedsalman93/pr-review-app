@@ -32,6 +32,12 @@ class SuggestionResponse(SuggestionBase):
 
 class PRReviewBase(BaseModel):
     pr_url: str
+    target_type: Optional[str] = "pr"
+    target_ref: Optional[str] = None
+    target_base_ref: Optional[str] = None
+    target_type: Optional[str] = "pr"
+    target_ref: Optional[str] = None
+    target_base_ref: Optional[str] = None
 
 
 class PRReviewCreate(PRReviewBase):
@@ -78,6 +84,22 @@ class PRReviewListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class RecentPRItem(BaseModel):
+    provider: str
+    project_name: str
+    pr_number: int
+    title: str
+    author: str
+    state: str
+    updated_at: datetime
+    web_url: str
+
+
+class RecentPRListResponse(BaseModel):
+    items: List[RecentPRItem]
+    total: int
 
 
 class ChatRequest(BaseModel):

@@ -13,17 +13,36 @@ from ..schemas import (
     PRReviewResponse, 
     PRReviewDetailResponse,
     PRReviewListResponse,
+    RecentPRItem,
+    RecentPRListResponse,
     ChatRequest,
     ChatResponse,
     ChatHistoryResponse,
 )
-from ..services import get_provider_service, detect_provider, ProviderType
+from ..services import (
+    get_provider_service,
+    detect_provider,
+    detect_target_type,
+    extract_target_ref,
+    ProviderType,
+    ReviewTargetType,
+)
 from ..services.pr_agent_service import PRAgentService
+from ..services.github_service import GitHubService
+from ..services.gitlab_service import GitLabService
+from ..config import get_settings
 
 router = APIRouter(prefix="/api/reviews", tags=["reviews"])
 
 
-async def process_review(review_id: int, pr_url: str, db: Session, extended: bool = False, extra_instructions: str = None):
+async def process_review(
+    review_id: int,
+    pr_url: str,
+    db: Session,
+    extended: bool = False,
+    extra_instructions: str = None,
+    target_type: str = ReviewTargetType.PR,
+):
     """Background task to process PR review"""
     # Re-fetch the review from DB (needed for background task)
     review = db.query(PRReview).filter(PRReview.id == review_id).first()
@@ -51,7 +70,7 @@ async def process_review(review_id: int, pr_url: str, db: Session, extended: boo
         review.add_log(f"Provider detected: {provider}", "info", db)
         await asyncio.to_thread(db.commit)
         
-        # Fetch PR info for metadata (pr-agent will handle the actual review)
+        # Fetch target info for metadata
         if not extended:
             review.current_stage = "fetching_pr_info"
             review.add_log("Stage: Fetching PR information for metadata...", "info", db)
@@ -59,9 +78,12 @@ async def process_review(review_id: int, pr_url: str, db: Session, extended: boo
             
             try:
                 provider_service = await asyncio.to_thread(get_provider_service, pr_url)
-                pr_info = await asyncio.to_thread(provider_service.get_pr_info, pr_url)
+                if target_type == ReviewTargetType.COMMIT:
+                    pr_info = await asyncio.to_thread(provider_service.get_commit_info, pr_url)
+                else:
+                    pr_info = await asyncio.to_thread(provider_service.get_pr_info, pr_url)
                 review.project_name = pr_info.project_name
-                review.pr_number = pr_info.pr_number
+                review.pr_number = pr_info.pr_number if pr_info.pr_number and pr_info.pr_number > 0 else None
                 review.pr_title = pr_info.title
                 review.pr_author = pr_info.author
                 review.source_branch = pr_info.source_branch
@@ -87,7 +109,22 @@ async def process_review(review_id: int, pr_url: str, db: Session, extended: boo
             review.add_log(msg, level, db)
             await asyncio.to_thread(db.commit)
 
-        review_result = await pr_agent_service.review_pr(pr_url, log_callback=log_callback, extended=extended, extra_instructions=extra_instructions)
+        provider_service = await asyncio.to_thread(get_provider_service, pr_url)
+        if target_type == ReviewTargetType.COMMIT:
+            review_result = await pr_agent_service.review_commit(
+                pr_url,
+                provider_service=provider_service,
+                log_callback=log_callback,
+                extended=extended,
+                extra_instructions=extra_instructions,
+            )
+        else:
+            review_result = await pr_agent_service.review_pr(
+                pr_url,
+                log_callback=log_callback,
+                extended=extended,
+                extra_instructions=extra_instructions,
+            )
         suggestions = review_result.get("suggestions", [])
         
         # Save advanced review metadata
@@ -120,7 +157,7 @@ async def process_review(review_id: int, pr_url: str, db: Session, extended: boo
         # Save suggestions to DB
         new_count = 0
         for sugg in suggestions:
-            key = f"{sugg.file_path}:{sugg.line_start}:{sugg.line_end}:{s.suggestion[:50]}"
+            key = f"{sugg.file_path}:{sugg.line_start}:{sugg.line_end}:{sugg.suggestion[:50]}"
             if key in existing_keys:
                 continue
                 
@@ -170,12 +207,20 @@ def create_review(
     
     Creates a new review entry and starts background processing.
     """
-    # Detect provider from URL
+    # Detect provider and target from URL
     provider = detect_provider(review_data.pr_url)
+    raw_target_type = (review_data.target_type or "").strip().lower()
+    if raw_target_type not in {ReviewTargetType.PR, ReviewTargetType.COMMIT}:
+        raw_target_type = detect_target_type(review_data.pr_url)
+    target_type = raw_target_type
+    target_ref = review_data.target_ref or extract_target_ref(review_data.pr_url, target_type)
     
     # Create review entry
     review = PRReview(
         pr_url=review_data.pr_url,
+        target_type=target_type,
+        target_ref=target_ref,
+        target_base_ref=review_data.target_base_ref,
         provider=provider,
         status=ReviewStatus.PENDING.value,
         processing_logs=[],
@@ -222,7 +267,13 @@ def create_review(
                     await asyncio.to_thread(new_db.commit)
                     logger.info(f"[BACKGROUND TASK] Applied rule set '{rule_set.name}' for review_id={review.id}")
             
-            await process_review(review.id, review_data.pr_url, new_db, extra_instructions=extra_instructions)
+            await process_review(
+                review.id,
+                review_data.pr_url,
+                new_db,
+                extra_instructions=extra_instructions,
+                target_type=target_type,
+            )
             logger.info(f"[BACKGROUND TASK] Completed review processing for review_id={review.id}")
         except Exception as e:
             logger.error(f"[BACKGROUND TASK] Error processing review {review.id}: {e}", exc_info=True)
@@ -292,7 +343,13 @@ def extend_review(
                 review_db.add_log("Extension task started", "info", None)
                 await asyncio.to_thread(new_db.commit)
             
-            await process_review(review.id, review.pr_url, new_db, extended=True)
+            await process_review(
+                review.id,
+                review.pr_url,
+                new_db,
+                extended=True,
+                target_type=(review.target_type or ReviewTargetType.PR),
+            )
             logger.info(f"[EXTENSION TASK] Completed extended review for review_id={review.id}")
         except Exception as e:
             logger.error(f"[EXTENSION TASK] Error extending review {review.id}: {e}", exc_info=True)
@@ -344,6 +401,71 @@ def list_reviews(
         page=page,
         per_page=per_page
     )
+
+
+@router.get("/recent", response_model=RecentPRListResponse)
+async def list_recent_provider_prs(
+    limit: int = 20,
+    provider: Optional[str] = None,
+    target_type: str = ReviewTargetType.PR,
+):
+    """
+    List recent open PRs/MRs from connected providers.
+    """
+    safe_limit = max(1, min(int(limit or 20), 100))
+    selected = (provider or "").strip().lower()
+    settings = get_settings()
+
+    providers: list[str] = []
+    if selected in {ProviderType.GITHUB, ProviderType.GITLAB}:
+        providers = [selected]
+    else:
+        providers = [ProviderType.GITHUB, ProviderType.GITLAB]
+
+    items: list[RecentPRItem] = []
+    per_provider_cap = safe_limit
+    target = (target_type or ReviewTargetType.PR).strip().lower()
+    if target not in {ReviewTargetType.PR, ReviewTargetType.COMMIT}:
+        target = ReviewTargetType.PR
+
+    async def fetch_github_items() -> list[RecentPRItem]:
+        try:
+            gh_service = GitHubService(token=settings.github_token)
+            gh_items = await asyncio.to_thread(
+                gh_service.list_recent_commits if target == ReviewTargetType.COMMIT else gh_service.list_recent_prs,
+                per_provider_cap,
+            )
+            return [RecentPRItem(**item.__dict__) for item in gh_items if item.web_url]
+        except Exception as e:
+            logger.warning(f"Failed to fetch recent GitHub PRs: {e}")
+            return []
+
+    async def fetch_gitlab_items() -> list[RecentPRItem]:
+        try:
+            gl_service = GitLabService()
+            gl_items = await asyncio.to_thread(
+                gl_service.list_recent_commits if target == ReviewTargetType.COMMIT else gl_service.list_recent_prs,
+                per_provider_cap,
+            )
+            return [RecentPRItem(**item.__dict__) for item in gl_items if item.web_url]
+        except Exception as e:
+            logger.warning(f"Failed to fetch recent GitLab MRs: {e}")
+            return []
+
+    fetch_tasks = []
+    if ProviderType.GITHUB in providers and (settings.github_token or "").strip():
+        fetch_tasks.append(fetch_github_items())
+    if ProviderType.GITLAB in providers and (settings.gitlab_token or "").strip():
+        fetch_tasks.append(fetch_gitlab_items())
+
+    if fetch_tasks:
+        provider_results = await asyncio.gather(*fetch_tasks)
+        for provider_items in provider_results:
+            items.extend(provider_items)
+
+    items.sort(key=lambda x: x.updated_at, reverse=True)
+    sliced = items[:safe_limit]
+    return RecentPRListResponse(items=sliced, total=len(items))
 
 
 @router.get("/{review_id}", response_model=PRReviewDetailResponse)

@@ -34,6 +34,18 @@ class SettingsResponse(SettingsBase):
     gitlab_oauth_ready: bool = False
     github_publisher_oauth: bool = False
     gitlab_publisher_oauth: bool = False
+    github_user_login: Optional[str] = None
+    github_user_name: Optional[str] = None
+    github_user_email: Optional[str] = None
+    github_user_id: Optional[int] = None
+    github_user_avatar_url: Optional[str] = None
+    github_user_type: Optional[str] = None
+    gitlab_user_username: Optional[str] = None
+    gitlab_user_name: Optional[str] = None
+    gitlab_user_email: Optional[str] = None
+    gitlab_user_id: Optional[int] = None
+    gitlab_user_avatar_url: Optional[str] = None
+    gitlab_user_web_url: Optional[str] = None
 
     class Config:
         from_attributes = True
