@@ -1,3 +1,4 @@
+import os
 import yaml
 import re
 import asyncio
@@ -56,16 +57,29 @@ class PRAgentService:
             if self.app_settings.ai_base_url:
                 get_settings().set("OPENAI.BASE_URL", self.app_settings.ai_base_url)
             get_settings().set("config.model", model)
-            
+
         elif provider == "anthropic":
             if self.app_settings.ai_api_key:
                 get_settings().set("ANTHROPIC.KEY", self.app_settings.ai_api_key)
             get_settings().set("config.model", model)
-            
+            # pr-agent defaults fallback_models to OpenAI's o4-mini; avoid that without an OpenAI key.
+            get_settings().set("config.fallback_models", [])
+
         elif provider == "gemini":
+            # pr-agent LiteLLM handler only wires GEMINI_API_KEY from GOOGLE_AI_STUDIO.GEMINI_API_KEY
+            # (see litellm_ai_handler); GEMINI.KEY alone is ignored.
             if self.app_settings.ai_api_key:
-                get_settings().set("GEMINI.KEY", self.app_settings.ai_api_key)
-            get_settings().set("config.model", model)
+                key = self.app_settings.ai_api_key.strip()
+                get_settings().set("GOOGLE_AI_STUDIO.GEMINI_API_KEY", key)
+                os.environ["GEMINI_API_KEY"] = key
+            m = (model or "").strip()
+            if m.endswith(":latest"):
+                m = m[: -len(":latest")]
+            if m and "/" not in m:
+                m = f"gemini/{m}"
+            get_settings().set("config.model", m)
+            # Same as anthropic: shipped default fallback is OpenAI o4-mini → dummy_key errors.
+            get_settings().set("config.fallback_models", [])
         
         # Set common config
         max_tokens = self.app_settings.max_tokens or 128000
@@ -351,8 +365,15 @@ class PRAgentService:
     def _resolve_litellm_model(self) -> str:
         provider = (self.app_settings.ai_provider or "").lower()
         model = self.app_settings.ai_model
-        if provider in {"ollama", "ollama_cloud"} and not model.startswith("ollama/"):
+        if provider in {"ollama", "ollama_cloud"} and model and not str(model).startswith("ollama/"):
             return f"ollama/{model}"
+        if provider == "gemini":
+            m = (model or "").strip()
+            if m.endswith(":latest"):
+                m = m[: -len(":latest")]
+            if m and "/" not in m:
+                return f"gemini/{m}"
+            return m
         return model
 
     async def review_commit(

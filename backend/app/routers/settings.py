@@ -307,8 +307,6 @@ async def get_available_models(
     api_key: Optional[str] = None
 ):
     """Fetch available models from the specified AI provider"""
-    import httpx
-    
     try:
         if provider in ["ollama", "ollama_cloud"]:
             # Local Ollama lists models from the local daemon; Cloud always lists from ollama.com.
@@ -351,7 +349,39 @@ async def get_available_models(
                 # Filter for chat models to keep the list clean
                 chat_models = [m for m in models if any(x in m.lower() for x in ["gpt-4", "gpt-3.5", "o1", "o3"])]
                 return chat_models or models
-                
+
+        elif provider == "gemini":
+            # Google AI Studio / Gemini API — list models the key can use (same endpoint LiteLLM targets).
+            key = (api_key or "").strip()
+            if not key:
+                return []
+            list_url = "https://generativelanguage.googleapis.com/v1beta/models"
+            collected: list[str] = []
+            page_token: Optional[str] = None
+            async with httpx.AsyncClient() as client:
+                while True:
+                    params: dict[str, str] = {"key": key}
+                    if page_token:
+                        params["pageToken"] = page_token
+                    response = await client.get(list_url, params=params, timeout=20.0)
+                    if response.status_code != 200:
+                        return []
+                    data = response.json()
+                    for m in data.get("models") or []:
+                        methods = m.get("supportedGenerationMethods") or []
+                        if "generateContent" not in methods:
+                            continue
+                        name = (m.get("name") or "").strip()
+                        if name.startswith("models/"):
+                            name = name[len("models/") :]
+                        if name:
+                            collected.append(name)
+                    page_token = data.get("nextPageToken")
+                    if not page_token:
+                        break
+            collected.sort()
+            return collected
+
         return []
     except Exception as e:
         print(f"Error fetching models: {e}")

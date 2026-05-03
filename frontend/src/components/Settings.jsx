@@ -140,6 +140,26 @@ const LLM_PROVIDERS = [
     { id: 'anthropic', label: 'Anthropic', iconSrc: anthropicBrand, iconTone: 'mono' },
 ];
 
+/** Backend ignores custom base URL for Gemini/Anthropic (fixed vendor endpoints). */
+function llmShowsOptionalApiBase(provider) {
+    return provider === 'openai';
+}
+
+function llmModelPlaceholder(provider) {
+    if (provider === 'ollama' || provider === 'ollama_cloud') return 'qwen2.5-coder:32b';
+    if (provider === 'gemini') return 'gemini-2.0-flash';
+    if (provider === 'anthropic') return 'claude-sonnet-4-20250514';
+    return 'gpt-4o';
+}
+
+function llmApiKeyPlaceholder(provider) {
+    if (provider === 'ollama') return 'Optional for local';
+    if (provider === 'ollama_cloud') return 'Required for Ollama Cloud';
+    if (provider === 'gemini') return 'Google AI Studio key (AIza…)';
+    if (provider === 'anthropic') return 'sk-ant-…';
+    return 'sk-…';
+}
+
 function getDefaultLlmConfig(provider) {
     if (provider === 'ollama_cloud') return { ai_model: '', ai_base_url: OLLAMA_CLOUD_BASE_URL, ai_api_key: '' };
     if (provider === 'ollama') return { ai_model: '', ai_base_url: 'http://localhost:11434', ai_api_key: '' };
@@ -828,7 +848,7 @@ const Settings = () => {
                         id="modal_ai_model_text"
                         value={settings.ai_model}
                         onChange={handleChange('ai_model')}
-                        placeholder={settings.ai_provider.includes('ollama') ? 'qwen2.5-coder:32b' : 'gpt-4o'}
+                        placeholder={llmModelPlaceholder(settings.ai_provider)}
                         secondaryAction={
                             <button
                                 type="button"
@@ -842,34 +862,46 @@ const Settings = () => {
                         }
                     />
                 )}
-                <InputField
-                    label={settings.ai_provider.includes('ollama') ? 'Ollama URL' : 'API base URL (optional)'}
-                    id="modal_ai_base_url"
-                    type="url"
-                    value={settings.ai_base_url}
-                    onChange={handleChange('ai_base_url')}
-                    placeholder={
-                        settings.ai_provider === 'ollama_cloud'
-                            ? OLLAMA_CLOUD_BASE_URL
-                            : settings.ai_provider.includes('ollama')
-                              ? 'http://localhost:11434'
-                              : 'https://api.openai.com/v1'
-                    }
-                    helpText={settings.ai_provider === 'ollama_cloud' ? 'Ollama Cloud endpoint is fixed to https://ollama.com' : ''}
-                    secondaryAction={
-                        settings.ai_provider === 'ollama_cloud' ? (
-                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Fixed</span>
-                        ) : null
-                    }
-                    disabled={settings.ai_provider === 'ollama_cloud'}
-                />
+                {settings.ai_provider === 'ollama_cloud' || settings.ai_provider === 'ollama' ? (
+                    <InputField
+                        label={settings.ai_provider === 'ollama_cloud' ? 'Ollama Cloud URL' : 'Ollama URL'}
+                        id="modal_ai_base_url"
+                        type="url"
+                        value={settings.ai_base_url}
+                        onChange={handleChange('ai_base_url')}
+                        placeholder={
+                            settings.ai_provider === 'ollama_cloud' ? OLLAMA_CLOUD_BASE_URL : 'http://localhost:11434'
+                        }
+                        helpText={
+                            settings.ai_provider === 'ollama_cloud'
+                                ? 'Ollama Cloud endpoint is fixed to https://ollama.com'
+                                : ''
+                        }
+                        secondaryAction={
+                            settings.ai_provider === 'ollama_cloud' ? (
+                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Fixed</span>
+                            ) : null
+                        }
+                        disabled={settings.ai_provider === 'ollama_cloud'}
+                    />
+                ) : llmShowsOptionalApiBase(settings.ai_provider) ? (
+                    <InputField
+                        label="API base URL (optional)"
+                        id="modal_ai_base_url"
+                        type="url"
+                        value={settings.ai_base_url}
+                        onChange={handleChange('ai_base_url')}
+                        placeholder="https://api.openai.com/v1"
+                        helpText="Override only if you use a proxy or Azure/OpenAI-compatible host."
+                    />
+                ) : null}
                 <InputField
                     label="API key"
                     id="modal_ai_api_key"
                     type="password"
                     value={settings.ai_api_key}
                     onChange={handleChange('ai_api_key')}
-                    placeholder={settings.ai_provider.includes('ollama') ? 'Optional for local' : 'sk-...'}
+                    placeholder={llmApiKeyPlaceholder(settings.ai_provider)}
                     helpText={settings.ai_provider === 'ollama_cloud' ? 'Required for Ollama Cloud' : ''}
                 />
             </div>
