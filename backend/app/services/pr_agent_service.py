@@ -21,6 +21,33 @@ from pr_agent.algo.utils import load_yaml
 
 from ..config import get_settings as get_app_settings
 from .llm_service import CodeSuggestion
+from .pr_agent_async_fixes import ensure_pr_agent_does_not_block_event_loop
+
+
+def _instantiate_review_tools(pr_url: str):
+    """Runs in a worker thread — PR-Agent tool __init__ blocks on Git/sync IO."""
+    return (
+        PRReviewer(
+            pr_url=pr_url,
+            is_answer=False,
+            is_auto=False,
+            args=None,
+            ai_handler=partial(LiteLLMAIHandler),
+        ),
+        PRCodeSuggestions(
+            pr_url=pr_url,
+            args=None,
+            ai_handler=partial(LiteLLMAIHandler),
+        ),
+        PRDescription(
+            pr_url=pr_url,
+            args=None,
+            ai_handler=partial(LiteLLMAIHandler),
+        ),
+    )
+
+
+ensure_pr_agent_does_not_block_event_loop()
 
 
 class PRAgentService:
@@ -196,24 +223,8 @@ class PRAgentService:
             await log(f"Initializing PR-Agent tools (pass {run_idx + 1}/{review_runs})...")
             pass_had_error = False
             try:
-                reviewer = PRReviewer(
-                    pr_url=pr_url,
-                    is_answer=False,
-                    is_auto=False,
-                    args=None,
-                    ai_handler=partial(LiteLLMAIHandler),
-                )
-
-                improver = PRCodeSuggestions(
-                    pr_url=pr_url,
-                    args=None,
-                    ai_handler=partial(LiteLLMAIHandler),
-                )
-
-                describer = PRDescription(
-                    pr_url=pr_url,
-                    args=None,
-                    ai_handler=partial(LiteLLMAIHandler),
+                reviewer, improver, describer = await asyncio.to_thread(
+                    _instantiate_review_tools, pr_url
                 )
             except Exception as e:
                 # Catch initialization errors (often token/permission related)

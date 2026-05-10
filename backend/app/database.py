@@ -9,6 +9,8 @@ database_url = get_database_url()
 connect_args = {}
 if database_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    # Busy timeout so reads (e.g. Settings) wait instead of failing while reviews commit.
+    connect_args["timeout"] = 30.0
 
 engine = create_engine(
     database_url,

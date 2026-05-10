@@ -460,13 +460,13 @@ const Layout = ({ children }) => {
                     <div className="flex items-center h-full ml-auto no-drag gap-3"> {/* Container for chip and window controls */}
                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-medium text-slate-600 dark:text-slate-300">
                             <Cpu className="w-2.5 h-2.5" />
-                            <span>Ollama Powered</span>
+                            <span>QODO Powered</span>
                         </div>
                         <a
-                            href="https://github.com/Codium-ai/pr-agent"
+                            href="https://github.com/moohamedsalman93/pr-review-app"
                             onClick={(e) => {
                                 e.preventDefault();
-                                openExternalLink('https://github.com/Codium-ai/pr-agent');
+                                openExternalLink('https://github.com/moohamedsalman93/pr-review-app');
                             }}
                             className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                         >
