@@ -25,6 +25,20 @@
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshot/1.png" alt="PR Review Agent review details with AI suggestions and inline code diffs" width="900" />
+</p>
+<p align="center"><em>Let AI review your PRs — scores, effort estimates, and actionable suggestions with inline diffs.</em></p>
+
+<p align="center">
+  <img src="screenshot/2.png" alt="PR Review Agent settings for Git providers and LLM configuration" width="900" />
+</p>
+<p align="center"><em>Connect GitHub or GitLab and bring your own LLM — Ollama, Gemini, OpenAI, Anthropic, and more.</em></p>
+
+---
+
 ## ✨ Features
 
 ### Core
